@@ -1,13 +1,17 @@
 # Aercom Gestión de Servicios
 
-Piloto privado con datos ficticios. El entorno de GitHub Codespaces ejecuta Django y PostgreSQL mediante Docker Compose.
+Piloto privado con datos ficticios. GitHub Codespaces prepara Django y PostgreSQL mediante Docker Compose.
 
-1. Abrí la rama de desarrollo en GitHub y creá el Codespace desde esa rama. Si ya lo tenés abierto con la configuración anterior, actualizá la rama y ejecutá **Codespaces: Rebuild Container**.
-2. En **Ports**, abrí el puerto **8000 · Aercom · Piloto** con el ícono del globo. Mantené el puerto privado.
-3. Ingresá como `oficina.demo`. Buscá el ticket de lavado y revisión.
-4. Salí con el botón **Salir**, ingresá como `campo.demo` y marcá el lavado como realizado.
-5. Volvé a entrar como oficina y abrí el ticket. La revisión sigue pendiente y el lavado muestra quién lo hizo y cuándo.
+1. En GitHub, seleccioná la rama `desarrollo/piloto-demo` y creá un Codespace desde **Code → Codespaces**. Usá un Codespace nuevo para esta demo si el anterior tenía un volumen de PostgreSQL configurado con la clave anterior. Conservá ese volumen si necesitás sus datos.
+2. Esperá la inicialización. En la terminal del Codespace, ejecutá `cat .aercom-demo/cuentas.json` para consultar las claves individuales. Guardalas en privado. Si usás un entorno con las cuentas anteriores, la carga inicial actualiza ambas claves y conserva los tickets existentes.
+3. En **Ports**, buscá **8000 · Aercom · Piloto**, mantenelo privado y abrilo en Chrome con el ícono del globo. Si Chrome devuelve 401, iniciá sesión en GitHub con la cuenta propietaria del Codespace y volvé a abrir el puerto desde **Ports**.
+4. Entrá como `oficina.demo`. Usá **Nuevo ticket**, cargá un generador ficticio y agregá dos acciones. Asigná «Lavado incluido en el abono» a Bruno Demo con facturación «Incluida en el abono». Asigná «Revisar vibración» a Inés Demo.
+5. Salí, entrá como `campo.demo` y completá el lavado en **Mis tareas**. Volvé a entrar como oficina, buscá el generador y comprobá que el ticket sigue abierto, el lavado tiene autor y hora, y la revisión sigue asignada a Inés.
 
-La clave compartida de las cuentas ficticias es `Aercom-Demo-2026`. Usá estas cuentas únicamente en el entorno privado de demostración. La aplicación permite abrir tickets, agregar acciones y asignarlas. El resultado de cada acción se registra por separado.
+También hay un ticket de ejemplo. La modalidad de abono se muestra en cada acción y esta entrega no emite facturas. Las fichas de análisis técnico, las visitas programadas, la facturación y el cierre administrativo quedan para las próximas etapas.
 
-La vista de campo muestra tareas asignadas. Las visitas programadas, las integraciones y el cierre administrativo corresponden a etapas posteriores.
+Para repetir las pruebas en el Codespace:
+
+```bash
+DJANGO_SECRET_KEY="$(cat .aercom-demo/django.key)" python manage.py test
+```

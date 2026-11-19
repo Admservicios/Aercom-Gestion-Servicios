@@ -9,7 +9,8 @@
 {% if accion.realizada_el %}
 <p class="estado hecha">Realizada · {{ accion.realizada_el|date:"d/m/Y H:i" }}</p>
 {% else %}
-<form method="post" action="{% url 'realizar' accion.pk %}">{% csrf_token %}<button>Marcar como realizada</button></form>
+<p class="estado pendiente">{{ accion.get_estado_display }}{% if accion.motivo_espera %} · {{ accion.motivo_espera }}{% endif %}</p>
+{% include "servicios/actualizar_accion.html" %}
 {% endif %}
 </article>
 {% empty %}<p>Por ahora no tenés tareas asignadas.</p>{% endfor %}

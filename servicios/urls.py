@@ -9,5 +9,6 @@ urlpatterns = [
     path("tickets/nuevo/", views.nuevo, name="nuevo"),
     path("tickets/<int:pk>/", views.ticket, name="ticket"),
     path("tickets/<int:pk>/acciones/", views.agregar, name="agregar"),
+    path("acciones/<int:pk>/estado/", views.cambiar_estado, name="cambiar_estado"),
     path("acciones/<int:pk>/realizar/", views.realizar, name="realizar"),
 ]

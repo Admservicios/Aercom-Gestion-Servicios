@@ -1,0 +1,15 @@
+<form method="post" action="{% url 'realizar' accion.pk %}">
+  {% csrf_token %}
+  <button>Marcar como realizada</button>
+</form>
+<details {% if accion.pk == accion_id %}open{% endif %}>
+  <summary>Actualizar estado</summary>
+  <form method="post" action="{% url 'cambiar_estado' accion.pk %}">
+    {% csrf_token %}
+    {% for campo in estado_form %}
+      <p><label>{{ campo.label }} {{ campo.as_widget }}</label>
+      {% if accion.pk == accion_id %}{{ campo.errors }}{% endif %}</p>
+    {% endfor %}
+    <button>Guardar estado</button>
+  </form>
+</details>

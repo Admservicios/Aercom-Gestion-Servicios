@@ -3,7 +3,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 # This configuration is for the private demonstration environment.
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-aercom-demo-only")
+SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 DEBUG = False
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]", "testserver"]
 if os.environ.get("CODESPACE_NAME"):
@@ -39,6 +39,7 @@ if os.environ.get("POSTGRES_HOST"):
         "USER": os.environ["POSTGRES_USER"],
         "PASSWORD": os.environ["POSTGRES_PASSWORD"],
         "HOST": os.environ["POSTGRES_HOST"],
+        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }}
 else:
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "piloto.sqlite3"}}
