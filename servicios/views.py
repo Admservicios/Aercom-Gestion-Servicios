@@ -17,15 +17,20 @@ class TicketForm(forms.ModelForm):
         fields = ("asunto", "detalle", "origen", "cliente", "planta", "equipo")
 
 
+class ResponsableField(forms.ModelChoiceField):
+    def label_from_instance(self, persona):
+        return persona.get_full_name() or persona.get_username()
+
+
 class AccionForm(forms.ModelForm):
-    responsable = forms.ModelChoiceField(
+    responsable = ResponsableField(
         queryset=get_user_model().objects.filter(is_active=True).order_by("first_name")
     )
 
     class Meta:
         model = Accion
         fields = ("titulo", "tipo", "detalle", "responsable", "facturacion")
-        labels = {"titulo": "Acción"}
+        labels = {"titulo": "Acción", "facturacion": "Facturación"}
 
 
 class EstadoForm(forms.Form):
@@ -72,7 +77,7 @@ def inicio(request):
         if numero.isascii() and numero.isdecimal() and len(numero) <= 18:
             filtro |= Q(pk=int(numero))
         tickets = tickets.filter(filtro)
-    responsable = forms.ModelChoiceField(
+    responsable = ResponsableField(
         queryset=get_user_model().objects.filter(is_active=True).order_by("first_name"),
         required=False, label="Pendientes por responsable",
     )
