@@ -1,0 +1,6 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'inicio' %}">Volver a tickets</a></p>
+<h1>Nuevo ticket</h1>
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Crear ticket</button></form></article>
+{% endblock %}

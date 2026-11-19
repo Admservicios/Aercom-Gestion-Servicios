@@ -1,0 +1,9 @@
+article + article { margin-top: 1rem; }
+article h3 { margin: .2rem 0; }
+form label { display: block; margin-bottom: .25rem; font-weight: 600; }
+input, textarea, select { max-width: 100%; border: 1px solid #9eb0bb; border-radius: .35rem; padding: .5rem; font: inherit; }
+textarea { width: min(100%, 40rem); height: 7rem; }
+button, .boton { display: inline-block; background: #145976; color: white; border: 0; border-radius: .35rem; padding: .55rem .9rem; font: inherit; cursor: pointer; text-decoration: none; }
+header button { background: #2f5a70; }
+.errorlist { color: #9a2727; }
+li + li { margin-top: .5rem; }

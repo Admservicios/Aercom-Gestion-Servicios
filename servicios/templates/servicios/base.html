@@ -1,0 +1,16 @@
+{% load static %}<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}Aercom Servicios{% endblock %}</title>
+<link rel="stylesheet" href="{% static 'estilos.css' %}">
+<link rel="stylesheet" href="{% static 'piloto.css' %}">
+</head>
+<body>
+<header><div class="marca">Aercom <span>/ Servicios</span></div>
+{% if user.is_authenticated %}<form method="post" action="{% url 'salir' %}">{% csrf_token %}<span>{{ user.get_full_name|default:user.username }}</span> <button>Salir</button></form>{% endif %}
+</header>
+<main>{% block contenido %}{% endblock %}</main>
+</body>
+</html>

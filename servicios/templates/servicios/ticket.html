@@ -1,0 +1,25 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'inicio' %}">Volver a tickets</a></p>
+<p class="contexto">Ticket T-{{ ticket.pk }}</p>
+<h1>{{ ticket.asunto }}</h1>
+<p>{{ ticket.cliente }}{% if ticket.equipo %} · {{ ticket.equipo }}{% endif %}</p>
+{% if ticket.detalle %}{{ ticket.detalle|linebreaks }}{% endif %}
+<p>Creado por {{ ticket.creado_por }} · {{ ticket.creado_el|date:"d/m/Y H:i" }}</p>
+<h2>Acciones</h2>
+{% for accion in acciones %}
+<article>
+<div class="cabecera"><h3>{{ accion.titulo }}</h3>
+{% if accion.realizada_el %}<strong class="estado hecha">Realizada</strong>{% else %}<strong class="estado pendiente">Pendiente</strong>{% endif %}</div>
+{{ accion.detalle|linebreaks }}
+<p>Responsable: {{ accion.responsable.get_full_name|default:accion.responsable.username }}</p>
+<p>Asignada desde {{ accion.asignada_el|date:"d/m/Y H:i" }}</p>
+{% if accion.realizada_el %}
+<p>Realizada por {{ accion.realizada_por.get_full_name|default:accion.realizada_por.username }} · {{ accion.realizada_el|date:"d/m/Y H:i" }}</p>
+{% elif accion.responsable == user %}
+<form method="post" action="{% url 'realizar' accion.pk %}">{% csrf_token %}<button>Marcar como realizada</button></form>
+{% endif %}
+</article>
+{% empty %}<p>Este ticket todavía no tiene acciones.</p>{% endfor %}
+<article><h2>Agregar acción</h2><form method="post" action="{% url 'agregar' ticket.pk %}">{% csrf_token %}{{ form.as_p }}<button>Agregar acción</button></form></article>
+{% endblock %}
