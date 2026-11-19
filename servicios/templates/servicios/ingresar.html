@@ -1,0 +1,5 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>Ingresar a Servicios</h1>
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Ingresar</button></form></article>
+{% endblock %}

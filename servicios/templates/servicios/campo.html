@@ -1,0 +1,17 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>Mis tareas</h1>
+{% for accion in acciones %}
+<article>
+<p class="contexto">T-{{ accion.ticket_id }} · {{ accion.ticket.cliente }}{% if accion.ticket.equipo %} · {{ accion.ticket.equipo }}{% endif %}</p>
+<h2>{{ accion.titulo }}</h2>
+{{ accion.detalle|linebreaks }}
+{% if accion.realizada_el %}
+<p class="estado hecha">Realizada · {{ accion.realizada_el|date:"d/m/Y H:i" }}</p>
+{% else %}
+<p class="estado pendiente">{{ accion.get_estado_display }}{% if accion.motivo_espera %} · {{ accion.motivo_espera }}{% endif %}</p>
+{% include "servicios/actualizar_accion.html" %}
+{% endif %}
+</article>
+{% empty %}<p>Por ahora no tenés tareas asignadas.</p>{% endfor %}
+{% endblock %}
