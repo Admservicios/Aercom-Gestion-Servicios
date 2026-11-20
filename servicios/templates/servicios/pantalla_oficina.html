@@ -1,0 +1,40 @@
+{% extends "servicios/base.html" %}
+{% block cabecera %}<meta http-equiv="refresh" content="60">{% endblock %}
+{% block navegacion %}
+<nav class="menu-servicios" aria-label="Módulos"><a href="{% url 'inicio' %}">Inicio</a><a href="{% url 'agenda' %}">Agenda</a></nav>
+{% endblock %}
+{% block contenido %}
+<h1>Pantalla de oficina</h1>
+<p class="fecha-pantalla">{{ hoy|date:"l j \d\e F" }}</p>
+<div class="pantalla-oficina">
+<section aria-label="Agenda del día">
+  <h2>Agenda del día</h2>
+  {% for visita in visitas %}
+  <article>
+    <h3><a href="{% url 'visita' visita.pk %}">{{ visita.hora_desde|time:"H:i" }} a {{ visita.hora_hasta|time:"H:i" }} · {{ visita.cliente.nombre }}</a></h3>
+    {% if visita.planta_id %}<p>{{ visita.planta.nombre }}</p>{% endif %}
+    <p>{% for tecnico in visita.tecnicos.all %}{{ tecnico.get_full_name|default:tecnico.username }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    <ul>
+      {% for trabajo in visita.trabajos.all %}<li>{{ trabajo.titulo }}</li>{% endfor %}
+      {% for pedido in visita.pedidos.all %}<li>{{ pedido.referencia|default:pedido.ticket.asunto }}</li>{% endfor %}
+    </ul>
+  </article>
+  {% empty %}<p>Sin visitas registradas para hoy.</p>{% endfor %}
+</section>
+<section aria-label="Avisos que requieren atención">
+  <h2>Avisos que requieren atención</h2>
+  {% for aviso in avisos %}
+  <article>
+    <h3><a href="{% url 'aviso_operativo' aviso.pk %}">{{ aviso.titulo }}</a></h3>
+    {% if aviso.alerta_campo_id %}
+    <p>{{ aviso.alerta_campo.detalle|truncatechars:160 }}</p>
+    {% elif aviso.recordatorio.fecha_activacion %}
+    <p>{{ aviso.recordatorio.get_tipo_display }} · {{ aviso.recordatorio.fecha_activacion|date:"d/m/Y" }}</p>
+    {% endif %}
+    {% if aviso.atendido_por_id %}<p>En atención por {{ aviso.atendido_por.get_full_name|default:aviso.atendido_por.username }}</p>
+    {% else %}<p>Pendiente de atención</p>{% endif %}
+  </article>
+  {% empty %}<p>Sin avisos pendientes de atención.</p>{% endfor %}
+</section>
+</div>
+{% endblock %}

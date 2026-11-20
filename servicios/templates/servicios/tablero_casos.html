@@ -1,0 +1,18 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'tablero_gerencia' %}?dia={{ dia|date:'Y-m-d' }}">Volver al tablero de gerencia</a></p>
+<h1>{{ titulo }}</h1>
+<article>
+  <p>{{ pagina.paginator.count }} caso{{ pagina.paginator.count|pluralize }}</p>
+  <ul>{% for enlace, nombre, detalle in filas %}
+    <li><a href="{{ enlace }}">{{ nombre }}</a>{% if detalle %} · {{ detalle }}{% endif %}</li>
+  {% empty %}<li>Sin casos para mostrar.</li>{% endfor %}</ul>
+  {% if pagina.has_other_pages %}
+  <nav aria-label="Páginas de casos">
+    {% if pagina.has_previous %}<a href="?{{ filtros_pagina }}{% if filtros_pagina %}&amp;{% endif %}page={{ pagina.previous_page_number }}">Anterior</a>{% endif %}
+    <span>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</span>
+    {% if pagina.has_next %}<a href="?{{ filtros_pagina }}{% if filtros_pagina %}&amp;{% endif %}page={{ pagina.next_page_number }}">Siguiente</a>{% endif %}
+  </nav>
+  {% endif %}
+</article>
+{% endblock %}

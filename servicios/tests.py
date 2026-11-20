@@ -1476,3 +1476,82 @@ class RecordatoriosAvisosTest(TestCase):
         self.assertContains(self.client.get(reverse("avisos_operativos")), "Vibración ficticia")
         detalle = reverse("aviso_operativo", args=[aviso.pk])
         self.assertContains(self.client.get(detalle), "Tomar aviso")
+
+
+class TableroGerenciaTest(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("oficina.tablero")
+        self.admin.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.coordinacion = User.objects.create_user("coordinacion.tablero")
+        self.coordinacion.groups.add(Group.objects.create(name=Rol.COORDINACION))
+        self.campo = User.objects.create_user("campo.tablero")
+        self.campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.cliente = Cliente.objects.create(codigo="AB-74", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.hoy = timezone.localdate()
+        self.canal = self.cliente.contratos_abono.create(
+            referencia="AB-74", vigente_desde=self.hoy - timedelta(days=60),
+            alcance="Control preventivo", frecuencia="Mensual", valor=500, moneda="ARS",
+        )
+        self.ticket = Ticket.objects.create(asunto="Trabajo para tablero", cliente_ficha=self.cliente, creado_por=self.admin)
+        self.accion = self.ticket.acciones.create(titulo="Inspección demorada", responsable=self.campo)
+        self.client.force_login(self.admin)
+
+    def test_indicadores_y_drilldown_con_los_mismos_casos(self):
+        sin_acciones = Ticket.objects.create(asunto="Pendiente de asignación", cliente_ficha=self.cliente, creado_por=self.admin)
+        pedido = self.ticket.pedidos_servicio.create(alcance="Revisión", estado=PedidoServicio.Estado.ENVIADO)
+        self.ticket.pedidos_servicio.create(alcance="Venta", estado=PedidoServicio.Estado.ENVIADO, tipo="repuestos")
+        solicitud = self.ticket.solicitudes_facturacion.create(
+            solicitante=self.admin, modalidad="posterior", estado="facturada", documentacion_faltante="Falta el informe.",
+        )
+        control = self.cliente.facturacion_mensual.create(
+            periodo=self.hoy.replace(day=1), contrato=self.canal, actualizado_por=self.admin, requiere_oc=True,
+        )
+        destino = reverse("recordatorio_ticket", args=[self.ticket.pk])
+        ayer = (self.hoy - timedelta(days=1)).isoformat()
+        for titulo in ("Control de plazo", "Segundo aviso"):
+            self.client.post(destino, {
+                "titulo": titulo, "tipo": "demora", "disparador": "fecha", "fecha": ayer,
+                "responsable": self.admin.pk, "accion": self.accion.pk,
+            })
+        tablero = self.client.get(reverse("tablero_gerencia"))
+        esperados = {
+            "sin_asignar": reverse("ticket", args=[sin_acciones.pk]), "sin_fecha": reverse("pedido_servicio", args=[pedido.pk]),
+            "abonos": reverse("facturacion_abono_mes", args=[control.periodo.strftime("%Y-%m"), self.cliente.pk]),
+            "documentos_trabajos": reverse("facturacion_trabajo", args=[solicitud.pk]),
+            "documentos_abonos": reverse("facturacion_abono_mes", args=[control.periodo.strftime("%Y-%m"), self.cliente.pk]),
+        }
+        for indicador, enlace in esperados.items():
+            listado = self.client.get(reverse("tablero_casos", args=[indicador]))
+            self.assertContains(listado, enlace)
+            self.assertEqual(listado.context["pagina"].paginator.count, 1)
+        self.assertEqual({clave: total for clave, _, total in tablero.context["indicadores"]}, dict.fromkeys(esperados, 1))
+        self.assertEqual(tablero.context["demoras"], [(Rol.CAMPO, 1)])
+        listado = self.client.get(reverse("tablero_casos", args=["demoras"]), {"puesto": Rol.CAMPO})
+        self.assertContains(listado, self.accion.titulo)
+
+    def test_carga_dia_pantalla_y_permisos(self):
+        visita = Visita.objects.create(cliente=self.cliente, fecha=self.hoy, hora_desde="09:00", hora_hasta="10:30")
+        visita.tecnicos.add(self.campo)
+        visita.trabajos.add(self.accion)
+        campo2 = User.objects.create_user("campo2.tablero")
+        campo2.groups.add(Group.objects.get(name=Rol.CAMPO))
+        visita.tecnicos.add(campo2)
+        activa = AlertaCampo.objects.create(autor=self.campo, detalle="Novedad visible")
+        AvisoOperativo.objects.create(alerta_campo=activa)
+        resuelta = AlertaCampo.objects.create(autor=self.campo, detalle="Novedad ya resuelta")
+        AvisoOperativo.objects.create(alerta_campo=resuelta, resuelto_el=timezone.now())
+        pantalla = reverse("pantalla_oficina")
+        tablero = self.client.get(reverse("tablero_gerencia"))
+        self.assertEqual([item["duracion"] for item in tablero.context["carga"]], [timedelta(minutes=90)] * 2)
+        respuesta = self.client.get(reverse("tablero_casos", args=["carga"]), {"tecnico": self.campo.pk})
+        self.assertContains(respuesta, reverse("visita", args=[visita.pk]))
+        self.client.force_login(self.coordinacion)
+        respuesta = self.client.get(pantalla)
+        self.assertContains(respuesta, "Novedad visible")
+        self.assertNotContains(respuesta, "Novedad ya resuelta")
+        self.assertContains(respuesta, self.accion.titulo)
+        self.assertContains(respuesta, 'http-equiv="refresh" content="60"')
+        self.assertEqual(self.client.get(reverse("tablero_gerencia")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("tablero_casos", args=["abonos"])).status_code, 403)
+        self.client.force_login(self.campo)
+        self.assertEqual(self.client.get(pantalla).status_code, 403)

@@ -31,7 +31,7 @@ def roles(usuario):
     if not usuario.is_authenticated:
         return set()
     if not hasattr(usuario, "_roles_servicios"):
-        usuario._roles_servicios = set(usuario.groups.values_list("name", flat=True))
+        usuario._roles_servicios = {grupo.name for grupo in usuario.groups.all()}
     return usuario._roles_servicios
 
 
@@ -69,6 +69,7 @@ def menu_por_rol(request):
         "puede_ver_solicitudes": bool(asignados & ROLES_SOLICITUD_COTIZACION),
         "puede_solicitar_cotizacion": Rol.RESPONSABLE_TECNICO in asignados,
         "puede_registrar_cierre_sap": Rol.ADMINISTRACION in asignados,
+        "puede_ver_gerencia": bool(asignados & ROLES_FACTURACION),
         "puede_facturar_abonos": bool(asignados & ROLES_FACTURACION),
         "puede_editar_agenda": bool(asignados & ROLES_EDICION_AGENDA),
         "puede_editar_catalogo": bool(asignados & ROLES_EDICION_CATALOGO),

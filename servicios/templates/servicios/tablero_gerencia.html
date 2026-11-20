@@ -1,0 +1,29 @@
+{% extends "servicios/base.html" %}
+{% load tiempos_servicios %}
+{% block contenido %}
+<h1>Tablero de gerencia</h1>
+<article>
+  <form method="get">{{ form.as_p }}<button>Consultar</button></form>
+  <p>El día seleccionado fija la carga de técnicos y el mes de facturación. Los pendientes y las demoras reflejan el estado actual.</p>
+</article>
+<section class="indicadores" aria-label="Indicadores">
+  {% for clave, titulo, cantidad in indicadores %}
+  <a href="{% url 'tablero_casos' clave %}?dia={{ dia|date:'Y-m-d' }}"><strong>{{ cantidad }}</strong>{{ titulo }}</a>
+  {% endfor %}
+</section>
+<article>
+  <h2>Carga por técnico · {{ dia|date:"d/m/Y" }}</h2>
+  <ul>{% for item in carga %}
+    <li><a href="{% url 'tablero_casos' 'carga' %}?dia={{ dia|date:'Y-m-d' }}&amp;tecnico={{ item.tecnico.pk }}">{{ item.tecnico.get_full_name|default:item.tecnico.username }}</a>
+      · {{ item.visitas }} visita{{ item.visitas|pluralize }} · {{ item.duracion|horas_corridas }} programadas</li>
+  {% empty %}<li>Sin visitas registradas para ese día.</li>{% endfor %}</ul>
+</article>
+<article>
+  <h2>Trabajos demorados por puesto</h2>
+  <p>Incluye acciones abiertas con un recordatorio vinculado de demora o vencimiento cuya fecha ya pasó.</p>
+  <ul>{% for puesto, cantidad in demoras %}
+    <li><a href="{% url 'tablero_casos' 'demoras' %}?dia={{ dia|date:'Y-m-d' }}&amp;puesto={{ puesto|urlencode }}">{{ puesto }}</a>
+      · {{ cantidad }} trabajo{{ cantidad|pluralize }}</li>
+  {% empty %}<li>Sin trabajos demorados según los recordatorios vinculados.</li>{% endfor %}</ul>
+</article>
+{% endblock %}

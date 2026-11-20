@@ -33,8 +33,19 @@ class RecordatorioForm(forms.ModelForm):
 
     class Meta:
         model = Recordatorio
-        fields = ("titulo", "detalle", "tipo", "disparador", "fecha", "responsable", "destinatarios")
+        fields = ("titulo", "detalle", "tipo", "disparador", "fecha", "accion", "responsable", "destinatarios")
+        labels = {"accion": "Acción vinculada"}
+        help_texts = {"accion": "Si esta fecha marca un vencimiento o una demora, vinculá la acción para mostrarla en Gerencia."}
         widgets = {"fecha": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.ticket_id:
+            campo = self.fields["accion"]
+            campo.queryset = self.instance.ticket.acciones.order_by("pk")
+            campo.label_from_instance = lambda accion: accion.titulo
+        else:
+            del self.fields["accion"]
 
     def clean(self):
         datos = super().clean()

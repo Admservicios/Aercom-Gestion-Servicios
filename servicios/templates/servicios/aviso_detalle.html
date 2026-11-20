@@ -8,6 +8,7 @@
 {% if recordatorio.fecha_activacion %}<p>Fecha del aviso: {{ recordatorio.fecha_activacion|date:"d/m/Y" }}</p>{% else %}<p>A la espera de la próxima visita.</p>{% endif %}
 {{ recordatorio.detalle|linebreaks }}
 {% if es_oficina and recordatorio.ticket_id %}<p><a href="{% url 'ticket' recordatorio.ticket_id %}">Ticket T-{{ recordatorio.ticket_id }}</a></p>{% endif %}
+{% if es_oficina and recordatorio.accion_id %}<p><a href="{% url 'ticket' recordatorio.ticket_id %}#accion-{{ recordatorio.accion_id }}">{{ recordatorio.accion.titulo }}</a></p>{% endif %}
 {% if es_oficina and recordatorio.visita_id %}<p><a href="{% url 'visita' recordatorio.visita_id %}">Visita V-{{ recordatorio.visita_id }}</a></p>{% endif %}
 {% endwith %}
 {% else %}

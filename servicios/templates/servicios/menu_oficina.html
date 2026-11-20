@@ -12,6 +12,8 @@
   <a href="{% url 'equipos' %}">Equipos</a>
   <a href="{% url 'pedidos_servicio' %}">Pedidos de servicio</a>
   <a href="{% url 'agenda' %}">Agenda</a>
+  {% if puede_ver_gerencia %}<a href="{% url 'tablero_gerencia' %}">Tablero de gerencia</a>{% endif %}
+  <a href="{% url 'pantalla_oficina' %}">Pantalla de oficina</a>
   <a href="{% url 'facturacion_trabajos' %}">Facturación de trabajos</a>
   {% if puede_facturar_abonos %}
   <a href="{% url 'facturacion_abonos' %}">Facturación mensual de abonos</a>

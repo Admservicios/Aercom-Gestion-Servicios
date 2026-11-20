@@ -860,6 +860,9 @@ class Recordatorio(models.Model):
     disparador = models.CharField(max_length=14, choices=Disparador)
     fecha = models.DateField(blank=True, null=True)
     ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, null=True, blank=True, related_name="recordatorios")
+    accion = models.ForeignKey(
+        Accion, on_delete=models.PROTECT, null=True, blank=True, related_name="recordatorios",
+    )
     visita = models.ForeignKey(Visita, on_delete=models.PROTECT, null=True, blank=True, related_name="recordatorios")
     responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")

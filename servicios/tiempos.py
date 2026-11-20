@@ -20,15 +20,16 @@ puestos = (
 )
 
 
+def puesto_de_usuario(usuario):
+    asignados = roles(usuario)
+    return next((rol for rol in puestos if rol in asignados), "Sin puesto registrado")
+
+
 def registrar_movimiento(accion, tipo, autor, *, motivo="", categoria="", fecha=None):
     responsable = accion.responsable
-    asignados = roles(responsable)
     ultimo = accion.movimientos_tiempo.last()
     # Si cambian los grupos de un usuario, la pasada mantiene el puesto que tenía al recibirla.
-    if ultimo and tipo != Tipo.DERIVACION:
-        puesto = ultimo.puesto
-    else:
-        puesto = next((rol for rol in puestos if rol in asignados), "Sin puesto registrado")
+    puesto = ultimo.puesto if ultimo and tipo != Tipo.DERIVACION else puesto_de_usuario(responsable)
     return accion.movimientos_tiempo.create(
         tipo=tipo, autor=autor, responsable=responsable, puesto=puesto, motivo=motivo,
         categoria_espera=categoria, ocurrio_el=fecha or timezone.now(),
