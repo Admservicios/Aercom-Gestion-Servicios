@@ -19,6 +19,8 @@ def clientes(request, tipo=None):
             Q(nombre__icontains=consulta) | Q(codigo__icontains=consulta) | Q(referencia_sap__icontains=consulta),
         )
     return render(request, "servicios/clientes.html", {
+        "titulo_catalogo": {Cliente.Tipo.ABONADO: "Abonados", Cliente.Tipo.TERCERO: "Terceros"}.get(tipo, "Clientes"),
+        "consulta_alta": f"tipo={tipo}" if tipo else "",
         "tipo": tipo, "consulta": consulta, "pagina": Paginator(registros, 50).get_page(request.GET.get("page")),
     })
 

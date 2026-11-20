@@ -1,8 +1,11 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>{% if puede_facturar_abonos %}Facturación de trabajos{% else %}Mis solicitudes de facturación{% endif %}</h1>
-<p>Para registrar una solicitud, abrí el ticket o el pedido asociado al trabajo.</p>
-<article class="tarjeta-listado">
+{% if puede_facturar_abonos %}
+  {% include "servicios/encabezado_oficina.html" with titulo="Facturación de trabajos" descripcion="Para registrar una solicitud, abrí el ticket o el pedido asociado al trabajo." only %}
+{% else %}
+  {% include "servicios/encabezado_oficina.html" with titulo="Mis solicitudes de facturación" descripcion="Para registrar una solicitud, abrí el ticket o el pedido asociado al trabajo." only %}
+{% endif %}
+<div class="superficie-listado">
   <form class="filtros-listado" method="get">
     <div class="campo-busqueda">
       <label for="q">Buscar por cliente, asunto, OC o factura SAP</label>
@@ -19,15 +22,32 @@
     </div>
     <button>Buscar</button>
   </form>
-  <ul class="filas-listado">
-    {% for solicitud in pagina %}
-    <li><a href="{% url 'facturacion_trabajo' solicitud.pk %}">SF-{{ solicitud.pk }} · {{ solicitud.ticket.asunto }}</a>
-      <small>{{ solicitud.ticket.cliente_nombre }} · {{ solicitud.get_estado_display }} · {{ solicitud.get_modalidad_display }}
-      </small><small>Solicitó {{ solicitud.solicitante.get_full_name|default:solicitud.solicitante.username }} · {{ solicitud.creada_el|date:"d/m/Y" }}
-      {% if solicitud.cobranza_aplica %} · {{ solicitud.estado_cobranza }}{% endif %}
-      </small>{% if solicitud.documentacion_faltante %}<small>Falta {{ solicitud.documentacion_faltante|truncatechars:120 }}</small>{% endif %}</li>
-    {% empty %}<li>Sin solicitudes para mostrar.</li>{% endfor %}
-  </ul>
+  {% if pagina %}
+  <table class="tabla-oficina" aria-label="Solicitudes de facturación" role="table">
+    <thead role="rowgroup"><tr role="row">
+      <th scope="col">Solicitud</th><th scope="col">Solicitante y fecha</th><th scope="col">Estado</th>
+    </tr></thead>
+    <tbody role="rowgroup">
+      {% for solicitud in pagina %}
+      <tr role="row">
+        <td class="celda-principal" role="cell">
+          <a href="{% url 'facturacion_trabajo' solicitud.pk %}">SF-{{ solicitud.pk }} · {{ solicitud.ticket.asunto }}</a>
+          <small>{{ solicitud.ticket.cliente_nombre }} · {{ solicitud.get_modalidad_display }}</small>
+        </td>
+        <td role="cell">
+          {{ solicitud.solicitante.get_full_name|default:solicitud.solicitante.username }}
+          <small>{{ solicitud.creada_el|date:"d/m/Y" }}</small>
+        </td>
+        <td role="cell">
+          {% include "servicios/etiqueta_facturacion.html" with solicitud=solicitud only %}
+          {% if solicitud.cobranza_aplica %}<small>{{ solicitud.estado_cobranza }}</small>{% endif %}
+          {% if solicitud.documentacion_faltante %}<small>Falta {{ solicitud.documentacion_faltante|truncatechars:120 }}</small>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="estado-vacio">Sin solicitudes para mostrar.</p>{% endif %}
   {% include "servicios/paginacion.html" %}
-</article>
+</div>
 {% endblock %}

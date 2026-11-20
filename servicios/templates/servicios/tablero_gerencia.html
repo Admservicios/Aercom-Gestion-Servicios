@@ -1,7 +1,7 @@
 {% extends "servicios/base.html" %}
 {% load tiempos_servicios %}
 {% block contenido %}
-<h1>Tablero de gerencia</h1>
+{% include "servicios/encabezado_oficina.html" with titulo="Tablero de gerencia" only %}
 <article>
   <form method="get">{{ form.as_p }}<button>Consultar</button></form>
   <p>El día seleccionado fija la carga de técnicos y el mes de facturación. Los pendientes y las demoras reflejan el estado actual.</p>

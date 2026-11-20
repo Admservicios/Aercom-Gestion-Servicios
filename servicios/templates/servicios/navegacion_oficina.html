@@ -2,12 +2,17 @@
   <a class="marca marca-lateral" href="{% url 'inicio' %}">Aercom <span>/ Servicios</span></a>
   <a class="enlace-oficina enlace-inicio" href="{{ navegacion_oficina.inicio.url }}"{% if navegacion_oficina.inicio.actual %} aria-current="page"{% endif %}>Inicio</a>
   {% for grupo in navegacion_oficina.grupos %}
-  <div class="grupo-menu">
-    <h2>{% if grupo.enlace %}<a href="{{ grupo.enlace.url }}"{% if grupo.enlace.actual %} aria-current="{{ grupo.enlace.actual }}"{% endif %}>{{ grupo.titulo }}</a>{% else %}{{ grupo.titulo }}{% endif %}</h2>
-    {% for enlace in grupo.accesos %}
-    <a class="enlace-oficina" href="{{ enlace.url }}"{% if enlace.actual %} aria-current="{{ enlace.actual }}"{% endif %}>{{ enlace.titulo }}</a>
-    {% endfor %}
-  </div>
+  <details class="grupo-menu" name="modulos-oficina"{% if grupo.activo %} open{% endif %}>
+    <summary{% if grupo.activo %} class="grupo-activo"{% endif %}>{{ grupo.titulo }}</summary>
+    <div class="accesos-grupo">
+      {% if grupo.enlace %}
+      <a class="enlace-oficina" href="{{ grupo.enlace.url }}"{% if grupo.enlace.actual %} aria-current="{{ grupo.enlace.actual }}"{% endif %}>Todos los clientes</a>
+      {% endif %}
+      {% for enlace in grupo.accesos %}
+      <a class="enlace-oficina" href="{{ enlace.url }}"{% if enlace.actual %} aria-current="{{ enlace.actual }}"{% endif %}>{{ enlace.titulo }}</a>
+      {% endfor %}
+    </div>
+  </details>
   {% endfor %}
   {% if es_campo %}<a class="enlace-oficina" href="{% url 'nueva_alerta' %}">Reportar alerta</a>{% endif %}
 </nav>

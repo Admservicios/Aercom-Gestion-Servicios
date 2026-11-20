@@ -1,15 +1,14 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<div class="titulo-listado">
-  <h1>{% if tipo == "abonado" %}Abonados{% elif tipo == "tercero" %}Terceros{% else %}Clientes{% endif %}</h1>
-  {% if puede_editar_catalogo %}<a class="boton" href="{% url 'nuevo_cliente' %}{% if tipo %}?tipo={{ tipo }}{% endif %}">Nuevo cliente</a>{% endif %}
-</div>
-<nav class="submodulos" aria-label="Clasificación de clientes">
-  <a href="{% url 'clientes' %}"{% if not tipo %} aria-current="page"{% endif %}>Todos</a>
-  <a href="{% url 'abonados' %}"{% if tipo == "abonado" %} aria-current="page"{% endif %}>Abonados</a>
-  <a href="{% url 'terceros' %}"{% if tipo == "tercero" %} aria-current="page"{% endif %}>Terceros</a>
-</nav>
-<article class="tarjeta-listado">
+{% if puede_editar_catalogo %}{% url 'nuevo_cliente' as alta_cliente %}{% endif %}
+{% include "servicios/encabezado_oficina.html" with titulo=titulo_catalogo accion_url=alta_cliente accion_texto="Nuevo cliente" consulta_accion=consulta_alta only %}
+
+<div class="superficie-listado">
+  <nav class="submodulos filtros-cliente" aria-label="Clasificación de clientes">
+    <a href="{% url 'clientes' %}"{% if not tipo %} aria-current="page"{% endif %}>Todos</a>
+    <a href="{% url 'abonados' %}"{% if tipo == "abonado" %} aria-current="page"{% endif %}>Abonados</a>
+    <a href="{% url 'terceros' %}"{% if tipo == "tercero" %} aria-current="page"{% endif %}>Terceros</a>
+  </nav>
   <form class="filtros-listado" method="get">
     <div class="campo-busqueda">
       <label for="q">Buscar por nombre, código o referencia SAP</label>
@@ -17,11 +16,22 @@
     </div>
     <button>Buscar</button>
   </form>
-  <ul class="filas-listado">
-    {% for cliente in pagina %}
-    <li><a href="{% url 'cliente' cliente.pk %}">{{ cliente.nombre }}</a><small>{{ cliente.codigo }}{% if not tipo %} · {{ cliente.get_tipo_display }}{% endif %}</small></li>
-    {% empty %}<li>Sin clientes para mostrar.</li>{% endfor %}
-  </ul>
+  {% if pagina %}
+  <table class="tabla-oficina" aria-label="Clientes" role="table">
+    <thead role="rowgroup"><tr role="row">
+      <th scope="col">Cliente</th><th scope="col">Código</th><th scope="col">Tipo</th>
+    </tr></thead>
+    <tbody role="rowgroup">
+      {% for cliente in pagina %}
+      <tr role="row">
+        <td class="celda-principal" role="cell"><a href="{% url 'cliente' cliente.pk %}">{{ cliente.nombre }}</a></td>
+        <td role="cell">{{ cliente.codigo }}</td>
+        <td role="cell"><span class="etiqueta-oficina{% if cliente.tipo == 'abonado' %} etiqueta-completa{% endif %}">{{ cliente.get_tipo_display }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="estado-vacio">Sin clientes para mostrar.</p>{% endif %}
   {% include "servicios/paginacion.html" %}
-</article>
+</div>
 {% endblock %}

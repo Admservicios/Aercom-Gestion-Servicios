@@ -1,6 +1,6 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>Solicitudes de cotización</h1>
+{% include "servicios/encabezado_oficina.html" with titulo="Solicitudes de cotización" only %}
 {% if puede_solicitar_cotizacion %}<p>Para iniciar una solicitud, abrí un ticket con cliente vinculado.</p>{% endif %}
 {% for solicitud in pagina %}
 <article>

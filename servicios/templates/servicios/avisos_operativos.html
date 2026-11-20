@@ -1,7 +1,9 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>Mis avisos</h1>
-{% if es_oficina %}<p><a href="{% url 'alertas' %}">Alertas de campo</a></p>{% endif %}
+{% if es_oficina %}
+  {% url 'alertas' as alertas_campo %}
+  {% include "servicios/encabezado_oficina.html" with titulo="Mis avisos" accion_url=alertas_campo accion_texto="Alertas de campo" only %}
+{% else %}<h1>Mis avisos</h1>{% endif %}
 {% for recepcion in pagina %}
 <article>
   <h2><a href="{% url 'aviso_operativo' recepcion.aviso_id %}">{{ recepcion.aviso.titulo }}</a></h2>

@@ -1,9 +1,7 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<div class="titulo-listado">
-  <h1>Tickets</h1>
-  <a class="boton" href="{% url 'nuevo' %}">Nuevo ticket</a>
-</div>
+{% url 'nuevo' as nuevo_ticket %}
+{% include "servicios/encabezado_oficina.html" with titulo="Tickets" accion_url=nuevo_ticket accion_texto="Nuevo ticket" only %}
 <article class="tarjeta-listado">
   <form class="filtros-listado" method="get">
     <div class="campo-busqueda">

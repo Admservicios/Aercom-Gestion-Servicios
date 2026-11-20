@@ -19,7 +19,8 @@ botonMenu.addEventListener("click", () => {
     const abrir = botonMenu.getAttribute("aria-expanded") === "false";
     mostrarMenu(abrir);
     if (abrir) {
-        const enlace = enlaceActivo || menuOficina.querySelector(".enlace-inicio");
+        const grupoPlegado = enlaceActivo?.closest("details:not([open])");
+        const enlace = grupoPlegado?.querySelector("summary") || enlaceActivo || menuOficina.querySelector(".enlace-inicio");
         enlace.focus();
     }
 });

@@ -1,7 +1,6 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>Agenda operativa</h1>
-<p>Visitas registradas en el sistema. La Agenda General de Excel sigue siendo la fuente oficial.</p>
+{% include "servicios/encabezado_oficina.html" with titulo="Agenda operativa" descripcion="La Agenda General de Excel sigue siendo la fuente oficial." only %}
 {% if puede_editar_agenda %}<p>Para registrar una visita, abrí su ficha de <a href="{% url 'clientes' %}">cliente</a> o su <a href="{% url 'pedidos_servicio' %}">pedido de servicio</a>.</p>{% endif %}
 <article><form class="filtros-listado" method="get">{{ form.as_p }}<button>Consultar agenda</button></form></article>
 {% for visita in visitas %}

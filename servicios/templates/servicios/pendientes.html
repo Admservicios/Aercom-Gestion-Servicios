@@ -1,6 +1,6 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>Pendientes</h1>
+{% include "servicios/encabezado_oficina.html" with titulo="Pendientes" only %}
 <article><form class="filtros-listado" method="get">{{ form.as_p }}<button>Buscar pendientes</button></form></article>
 {% for accion in pagina %}
 <article class="registro-listado">

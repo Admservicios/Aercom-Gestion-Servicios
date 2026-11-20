@@ -1,6 +1,6 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>Tiempos por puesto</h1>
+{% include "servicios/encabezado_oficina.html" with titulo="Tiempos por puesto" only %}
 <article>
   <form method="get">
     <label for="q">Buscar por número, asunto del ticket o acción</label>

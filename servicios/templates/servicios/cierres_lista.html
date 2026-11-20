@@ -1,6 +1,6 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>Cierre administrativo</h1>
+{% include "servicios/encabezado_oficina.html" with titulo="Cierre administrativo" only %}
 {% if puede_registrar_cierre_sap %}<p>Para registrar una llamada de SAP, abrí su ticket o solicitud de facturación.</p>{% endif %}
 <article>
   <form method="get">

@@ -82,6 +82,9 @@ def navegacion_oficina(vista, permisos):
             {
                 "titulo": titulo,
                 "enlace": enlace(ruta_grupo) if ruta_grupo else None,
+                "activo": actual is not None and (
+                    actual == ruta_grupo or any(actual == ruta for _, ruta, _ in accesos)
+                ),
                 "accesos": [
                     {"titulo": rotulo, **enlace(ruta)}
                     for rotulo, ruta, permiso in accesos if permiso is None or permisos[permiso]

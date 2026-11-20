@@ -1,18 +1,12 @@
 {% extends "servicios/base.html" %}
 {% block titulo %}Oficina · Aercom Servicios{% endblock %}
 {% block contenido %}
-<div class="cabecera-oficina">
-  <h1>Menú de Oficina</h1>
-  <time datetime="{{ hoy|date:'Y-m-d' }}">{{ hoy|date:"l j \d\e F \d\e Y"|capfirst }}</time>
-</div>
+{% include "servicios/encabezado_oficina.html" with titulo="Menú de Oficina" fecha=hoy only %}
 
 <div class="resumen-oficina">
   <section class="panel-oficina panel-agenda" aria-labelledby="servicios-hoy">
     <div class="panel-cabecera">
-      <div>
-        <h2 id="servicios-hoy">Servicios de hoy</h2>
-        <p>Visitas registradas en la agenda operativa.</p>
-      </div>
+      <h2 id="servicios-hoy">Servicios de hoy</h2>
       <span class="panel-cuenta" aria-label="{{ total_visitas }} visitas">{{ total_visitas }}</span>
     </div>
     {% if visitas_hoy %}
@@ -46,7 +40,7 @@
           <small>T-{{ accion.ticket_id }} · {{ accion.responsable.get_full_name|default:accion.responsable.username }}</small>
           {% if accion.proximo_paso or accion.motivo_espera or accion.depende_de_id %}<small>{{ accion.siguiente_paso|truncatechars:100 }}</small>{% endif %}
         </div>
-        <span class="etiqueta-oficina{% if accion.bloqueada_por_previa %} etiqueta-espera{% endif %}">{% if accion.bloqueada_por_previa %}Bloqueada{% else %}{{ accion.get_estado_display }}{% endif %}</span>
+        <span class="etiqueta-oficina{% if accion.bloqueada_por_previa or accion.estado == 'en_espera' %} etiqueta-espera{% elif accion.estado == 'en_curso' %} etiqueta-curso{% endif %}">{% if accion.bloqueada_por_previa %}Bloqueada{% else %}{{ accion.get_estado_display }}{% endif %}</span>
       </li>
       {% endfor %}
     </ul>
@@ -67,7 +61,7 @@
           <a href="{% url 'facturacion_trabajo' solicitud.pk %}">{{ solicitud.ticket.asunto }}</a>
           <small>SF-{{ solicitud.pk }} · {{ solicitud.ticket.cliente_nombre }}</small>
         </div>
-        <span class="etiqueta-oficina{% if solicitud.documentacion_faltante %} etiqueta-espera{% endif %}">{{ solicitud.get_estado_display }}</span>
+        {% include "servicios/etiqueta_facturacion.html" with solicitud=solicitud only %}
       </li>
       {% endfor %}
     </ul>
