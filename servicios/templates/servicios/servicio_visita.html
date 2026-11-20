@@ -1,0 +1,35 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'servicios_tecnicos' %}">{% if es_oficina %}Volver a servicios de técnicos{% else %}Volver a mis visitas{% endif %}</a></p>
+<p class="contexto">Visita V-{{ visita.pk }} · {{ visita.fecha|date:"d/m/Y" }} · {{ visita.hora_desde|time:"H:i" }} a {{ visita.hora_hasta|time:"H:i" }}</p>
+<h1>{{ visita.cliente.nombre }}</h1>
+{% if visita.planta_id %}<p>{{ visita.planta.nombre }}</p>{% endif %}
+{{ visita.indicaciones|linebreaks }}
+{% if es_oficina %}<p><a href="{% url 'visita' visita.pk %}">Ver programación en Agenda</a></p>{% endif %}
+<h2>Trabajos de la visita</h2>
+{% for trabajo, resultado in fichas %}
+<article id="trabajo-{{ trabajo.pk }}">
+  <h3>{{ trabajo.titulo }}</h3>
+  <p>{% if es_oficina %}<a href="{% url 'ticket' trabajo.ticket_id %}#accion-{{ trabajo.pk }}">Ticket T-{{ trabajo.ticket_id }}</a>{% else %}T-{{ trabajo.ticket_id }}{% endif %}
+    {% if trabajo.ticket.equipo_nombre %} · {{ trabajo.ticket.equipo_nombre }}{% endif %}</p>
+  {{ trabajo.detalle|linebreaks }}
+  {% if resultado %}
+  <p><strong>{{ resultado.get_estado_display }}</strong></p>
+  <p>Responsable: {{ resultado.responsable.get_full_name|default:resultado.responsable.username }}</p>
+  <p>Registrado por {{ resultado.autor.get_full_name|default:resultado.autor.username }} · {{ resultado.registrado_el|date:"d/m/Y H:i" }}</p>
+  {% if resultado.observacion %}{{ resultado.observacion|linebreaks }}{% endif %}
+  {% if resultado.referencia_sap %}<p>Reporte o llamada SAP: {{ resultado.referencia_sap }}</p>{% endif %}
+  {% else %}
+  <p>Responsable: {{ trabajo.responsable.get_full_name|default:trabajo.responsable.username }}</p>
+  {% if trabajo.realizada_el %}
+  <p>La acción ya se completó. Esta visita no tiene un resultado registrado para ella.</p>
+  {% else %}
+  <p>Pendiente de registrar resultado.</p>
+  {% if puede_reportar and trabajo.responsable_id == user.pk %}
+  <p><a class="boton" href="{% url 'resultado_visita' visita.pk trabajo.pk %}">Registrar resultado</a></p>
+  {% endif %}
+  {% endif %}
+  {% endif %}
+</article>
+{% empty %}<p>Sin trabajos asignados para mostrar.</p>{% endfor %}
+{% endblock %}

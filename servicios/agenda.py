@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -179,6 +180,8 @@ def nueva(request, cliente_id=None, pedido_id=None):
 def reprogramar(request, pk):
     registros = Visita.objects.select_for_update() if request.method == "POST" else Visita.objects
     visita = get_object_or_404(registros, pk=pk)
+    if visita.resultados.exists():
+        return HttpResponse("La visita ya tiene resultados. Registrá una nueva visita para los trabajos pendientes.", status=409)
     form = ReprogramarForm(request.POST if request.method == "POST" else None, instance=visita)
     if form.is_valid():
         pedidos = list(PedidoServicio.objects.select_for_update().filter(visitas=visita).order_by("pk"))

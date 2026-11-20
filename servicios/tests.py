@@ -10,6 +10,7 @@ from django.utils import timezone
 from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Cotizacion, Equipo, Planta, RegistroMantenimiento, Ticket
 from .models import RespuestaPrecio, SolicitudCotizacion, SolicitudPrecio
 from .models import PedidoServicio, Visita
+from .models import ResultadoTrabajoVisita
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -903,3 +904,90 @@ class AgendaOperativaTest(TestCase):
         self.client.force_login(self.tecnico)
         self.assertEqual(self.client.get(reverse("agenda")).status_code, 403)
         self.assertEqual(self.client.post(self.alta, self.datos).status_code, 403)
+
+
+class ServiciosTecnicosTest(TestCase):
+    def setUp(self):
+        self.oficina = User.objects.create_user("oficina.campo")
+        self.oficina.groups.add(Group.objects.create(name=Rol.COORDINACION))
+        campo = Group.objects.get(name=Rol.CAMPO)
+        self.tecnico = User.objects.create_user("bruno.campo")
+        self.otro = User.objects.create_user("vera.campo")
+        self.ajeno = User.objects.create_user("ajeno.campo")
+        campo.user_set.add(self.tecnico, self.otro, self.ajeno)
+        self.cliente = Cliente.objects.create(codigo="AB-53", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        ticket = Ticket.objects.create(asunto="Servicio ficticio", cliente_ficha=self.cliente, creado_por=self.oficina)
+        self.trabajo = ticket.acciones.create(titulo="Lavado ficticio", responsable=self.tecnico)
+        self.otro_trabajo = ticket.acciones.create(titulo="Revisión ficticia", responsable=self.otro)
+        self.visita = self.crear_visita(date(2026, 11, 15))
+        self.visita.trabajos.add(self.trabajo, self.otro_trabajo)
+        self.detalle = reverse("servicio_visita", args=[self.visita.pk])
+        self.alta = reverse("resultado_visita", args=[self.visita.pk, self.trabajo.pk])
+
+    def crear_visita(self, fecha):
+        visita = Visita.objects.create(cliente=self.cliente, fecha=fecha, hora_desde="09:00", hora_hasta="11:00")
+        visita.tecnicos.add(self.tecnico, self.otro)
+        return visita
+
+    def test_registra_resultados_independientes_y_evitar_doble_envio(self):
+        self.client.force_login(self.tecnico)
+        self.assertContains(self.client.get(reverse("servicios_tecnicos")), self.detalle)
+        self.assertContains(self.client.get(reverse("inicio")), f"{self.detalle}#trabajo-{self.trabajo.pk}")
+        self.assertRedirects(
+            self.client.post(reverse("realizar", args=[self.trabajo.pk])), reverse("servicios_tecnicos"),
+        )
+        datos = {"estado": "realizado", "referencia_sap": "LLAMADA-FICTICIA-53"}
+        self.assertRedirects(self.client.post(self.alta, datos), self.detalle)
+        self.assertRedirects(self.client.post(self.alta, {"estado": "pendiente"}), self.detalle)
+        registro = ResultadoTrabajoVisita.objects.get()
+        self.assertEqual(registro.autor, self.tecnico)
+        self.assertEqual(registro.responsable, self.tecnico)
+        self.assertEqual(registro.estado, ResultadoTrabajoVisita.Estado.REALIZADO)
+        self.trabajo.refresh_from_db()
+        self.otro_trabajo.refresh_from_db()
+        self.assertEqual(self.trabajo.realizada_el, registro.registrado_el)
+        self.assertEqual(self.trabajo.realizada_por, self.tecnico)
+        self.assertIsNone(self.otro_trabajo.realizada_el)
+        self.assertNotContains(self.client.get(self.detalle), "Revisión ficticia")
+
+        self.client.force_login(self.oficina)
+        resultado = self.client.get(self.detalle)
+        for texto in ("Lavado ficticio", "Revisión ficticia", "LLAMADA-FICTICIA-53", "Pendiente de registrar resultado."):
+            self.assertContains(resultado, texto)
+        self.assertEqual(self.client.post(self.alta, datos).status_code, 403)
+        reprogramar = reverse("reprogramar_visita", args=[self.visita.pk])
+        self.assertEqual(self.client.get(reprogramar).status_code, 409)
+
+    def test_parcial_y_pendiente_seguido_de_realizado_en_otra_visita(self):
+        self.client.force_login(self.tecnico)
+        self.assertContains(
+            self.client.post(self.alta, {"estado": "parcial"}), "Indicá qué falta para poder continuar",
+        )
+        self.client.post(self.alta, {"estado": "parcial", "observacion": "Queda limpiar el interior."})
+        self.trabajo.refresh_from_db()
+        self.assertEqual(self.trabajo.estado, Accion.Estado.EN_ESPERA)
+        self.assertEqual(self.trabajo.motivo_espera, "Queda limpiar el interior.")
+        self.assertIsNone(self.trabajo.realizada_el)
+        segunda = self.crear_visita(date(2026, 11, 16))
+        segunda.trabajos.add(self.trabajo)
+        self.client.post(reverse("resultado_visita", args=[segunda.pk, self.trabajo.pk]), {
+            "estado": "pendiente", "observacion": "Falta acceso al equipo.",
+        })
+        tercera = self.crear_visita(date(2026, 11, 17))
+        tercera.trabajos.add(self.trabajo)
+        self.client.post(reverse("resultado_visita", args=[tercera.pk, self.trabajo.pk]), {"estado": "realizado"})
+        self.assertEqual(
+            list(self.trabajo.resultados_visita.order_by("pk").values_list("estado", flat=True)),
+            ["parcial", "pendiente", "realizado"],
+        )
+        self.trabajo.refresh_from_db()
+        self.assertEqual(self.trabajo.estado, Accion.Estado.REALIZADA)
+
+    def test_acceso_directo_a_visita_o_trabajo_ajeno(self):
+        self.client.force_login(self.ajeno)
+        self.assertNotContains(self.client.get(reverse("servicios_tecnicos")), self.detalle)
+        self.assertEqual(self.client.get(self.detalle).status_code, 404)
+        self.assertEqual(self.client.post(self.alta, {"estado": "realizado"}).status_code, 404)
+        self.client.force_login(self.otro)
+        self.assertEqual(self.client.post(self.alta, {"estado": "realizado"}).status_code, 404)
+        self.assertFalse(ResultadoTrabajoVisita.objects.exists())

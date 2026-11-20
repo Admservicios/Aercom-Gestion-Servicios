@@ -54,6 +54,9 @@
 <p>Responsable: {{ accion.responsable.get_full_name|default:accion.responsable.username }}</p>
 <p>{{ accion.get_tipo_display }} · Facturación: {{ accion.get_facturacion_display }}{% if accion.facturacion == "abono" %} (sin cargo adicional){% endif %}</p>
 {% if accion.motivo_espera %}<p>En espera de: {{ accion.motivo_espera }}</p>{% endif %}
+{% for resultado in accion.resultados_visita.all %}
+<p><a href="{% url 'servicio_visita' resultado.visita_id %}#trabajo-{{ accion.pk }}">Visita del {{ resultado.visita.fecha|date:"d/m/Y" }}</a> · {{ resultado.get_estado_display }}</p>
+{% endfor %}
 <h4>Historial</h4>
 <p>Asignada desde {{ accion.asignada_el|date:"d/m/Y H:i" }}{% if accion.asignada_por %} por {{ accion.asignada_por.get_full_name|default:accion.asignada_por.username }}{% endif %}</p>
 {% for cambio in accion.cambios.all %}

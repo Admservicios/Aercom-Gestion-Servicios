@@ -7,9 +7,10 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from .campo_servicios import visitas_de_campo
 from .forms import TicketForm, VinculoTicketForm
 from .models import Accion, CambioAccion, PedidoServicio, Ticket
-from .permisos import ROLES_SERVICIOS, es_oficina, oficina_requerida, servicios_requeridos
+from .permisos import ROLES_SERVICIOS, Rol, es_oficina, oficina_requerida, roles, servicios_requeridos
 from .solicitudes import solicitudes_visibles
 
 
@@ -48,6 +49,8 @@ class EstadoForm(forms.Form):
 def ver_campo(request, formulario=None, accion_id=None):
     acciones = Accion.objects.filter(responsable=request.user).select_related(
         "ticket__cliente_ficha", "ticket__equipo_ficha",
+    ).prefetch_related(
+        Prefetch("visitas_agendadas", queryset=visitas_de_campo(request.user), to_attr="mis_visitas"),
     ).order_by(
         F("realizada_el").asc(nulls_first=True), "-asignada_el",
     )
@@ -133,6 +136,7 @@ def vincular_ticket(request, pk):
 def ver_ticket(request, registro, form, estado_form=None, accion_id=None):
     acciones = registro.acciones.select_related("responsable", "asignada_por", "realizada_por").prefetch_related(
         Prefetch("cambios", queryset=CambioAccion.objects.select_related("autor")),
+        "resultados_visita__visita",
     ).order_by("pk")
     return render(request, "servicios/ticket.html", {
         "ticket": registro, "acciones": acciones, "form": form,
@@ -173,7 +177,10 @@ def volver_a_accion(request, accion):
 @transaction.atomic
 def realizar(request, pk):
     propias = Accion.objects.filter(responsable=request.user)
-    accion = get_object_or_404(propias, pk=pk)
+    accion = get_object_or_404(propias.select_for_update(), pk=pk)
+    if not accion.realizada_el and Rol.CAMPO in roles(request.user):
+        if accion.visitas_agendadas.filter(tecnicos=request.user).exists():
+            return redirect("servicios_tecnicos")
     propias.filter(pk=pk, realizada_el__isnull=True).update(
         estado=Accion.Estado.REALIZADA, motivo_espera="",
         realizada_el=timezone.now(), realizada_por=request.user,

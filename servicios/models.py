@@ -571,3 +571,24 @@ class MovimientoAgenda(models.Model):
 
     class Meta:
         ordering = ("-pk",)
+
+
+class ResultadoTrabajoVisita(models.Model):
+    class Estado(models.TextChoices):
+        REALIZADO = "realizado", "Realizado"
+        PARCIAL = "parcial", "Parcial"
+        PENDIENTE = "pendiente", "Pendiente"
+
+    visita = models.ForeignKey(Visita, on_delete=models.PROTECT, related_name="resultados")
+    trabajo = models.ForeignKey(Accion, on_delete=models.PROTECT, related_name="resultados_visita")
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    estado = models.CharField(max_length=10, choices=Estado)
+    observacion = models.CharField("Observación", max_length=240, blank=True)
+    referencia_sap = models.CharField("Reporte o llamada SAP", max_length=100, blank=True)
+    registrado_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("visita", "trabajo"), name="resultado_unico_por_visita_y_trabajo"),
+        ]

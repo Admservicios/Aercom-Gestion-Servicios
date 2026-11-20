@@ -21,11 +21,13 @@
   <a href="{% url 'equipos' %}">Equipos</a>
   <a href="{% url 'pedidos_servicio' %}">Pedidos de servicio</a>
   <a href="{% url 'agenda' %}">Agenda</a>
+  <a href="{% url 'servicios_tecnicos' %}">Servicios de técnicos</a>
   <a href="{% url 'cotizaciones_terceros' %}">Cotizaciones de terceros</a>
   {% if puede_gestionar_cotizaciones %}<a href="{% url 'solicitudes_precio' %}">Solicitudes de precios</a>{% endif %}
   {% if puede_ver_solicitudes %}<a href="{% url 'solicitudes_cotizacion' %}">Solicitudes de cotización</a>{% endif %}
   {% else %}
   <a href="{% url 'inicio' %}">Mis tareas</a>
+  <a href="{% url 'servicios_tecnicos' %}">Mis visitas</a>
   {% endif %}
   <a href="{% url 'alertas' %}">{% if es_oficina %}Alertas de campo{% else %}Mis alertas{% endif %}</a>
   {% if es_campo %}<a href="{% url 'nueva_alerta' %}">Reportar alerta</a>{% endif %}
