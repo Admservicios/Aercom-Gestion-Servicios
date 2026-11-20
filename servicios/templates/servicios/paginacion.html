@@ -1,7 +1,7 @@
 {% if pagina.has_other_pages %}
 <nav aria-label="Páginas de resultados">
-  {% if pagina.has_previous %}<a href="?q={{ consulta|urlencode }}&amp;page={{ pagina.previous_page_number }}">Anterior</a>{% endif %}
+  {% if pagina.has_previous %}<a href="?q={{ consulta|urlencode }}{% if estado %}&amp;estado={{ estado|urlencode }}{% endif %}&amp;page={{ pagina.previous_page_number }}">Anterior</a>{% endif %}
   <span>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</span>
-  {% if pagina.has_next %}<a href="?q={{ consulta|urlencode }}&amp;page={{ pagina.next_page_number }}">Siguiente</a>{% endif %}
+  {% if pagina.has_next %}<a href="?q={{ consulta|urlencode }}{% if estado %}&amp;estado={{ estado|urlencode }}{% endif %}&amp;page={{ pagina.next_page_number }}">Siguiente</a>{% endif %}
 </nav>
 {% endif %}

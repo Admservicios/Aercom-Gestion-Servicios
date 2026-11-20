@@ -26,7 +26,14 @@
   <h3>Repuestos e insumos</h3>
   <ul>
     {% for repuesto in solicitud.repuestos.all %}
-    <li>{{ repuesto.descripcion }}{% if repuesto.referencia %} · {{ repuesto.referencia }}{% endif %} · {{ repuesto.cantidad }} {% if repuesto.por_equipo %}por equipo{% else %}en total{% endif %}</li>
+    <li>{{ repuesto.descripcion }}{% if repuesto.referencia %} · {{ repuesto.referencia }}{% endif %} · {{ repuesto.cantidad }} {% if repuesto.por_equipo %}por equipo{% else %}en total{% endif %}
+      {% if puede_gestionar_cotizaciones %}
+      · <a href="{% url 'precio_repuesto' repuesto.pk %}">Registrar solicitud de precio</a>
+      {% for precio in repuesto.solicitudes_precio.all %}
+      · <a href="{% url 'solicitud_precio' precio.pk %}">SP-{{ precio.pk }}</a>
+      {% endfor %}
+      {% endif %}
+    </li>
     {% empty %}<li>Sin repuestos registrados.</li>{% endfor %}
   </ul>
   {% if solicitud.adicionales %}<h3>Adicionales</h3>{{ solicitud.adicionales|linebreaks }}{% endif %}

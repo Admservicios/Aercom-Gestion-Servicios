@@ -85,7 +85,7 @@ def detalle_solicitud(request, registro, revision_form=None, error_estado=None):
 def detalle(request, pk):
     registro = get_object_or_404(
         solicitudes_visibles(request.user).select_related("ticket__cliente_ficha", "solicitante")
-        .prefetch_related("equipos", "repuestos", "cambios__autor"),
+        .prefetch_related("equipos", "repuestos__solicitudes_precio", "cambios__autor"),
         pk=pk,
     )
     return detalle_solicitud(request, registro)

@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Cotizacion, Equipo, Planta, RegistroMantenimiento, Ticket
-from .models import SolicitudCotizacion
+from .models import RespuestaPrecio, SolicitudCotizacion, SolicitudPrecio
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -656,3 +656,86 @@ class CotizacionTest(TestCase):
         campo.groups.add(Group.objects.get(name=Rol.CAMPO))
         self.client.force_login(campo)
         self.assertEqual(self.client.get(detalle).status_code, 403)
+
+
+class SolicitudPrecioTest(TestCase):
+    def setUp(self):
+        self.comercial = User.objects.create_user("comercial.precios")
+        self.comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(self.comercial)
+        self.hoy = timezone.localdate()
+        self.datos = {
+            "codigo": "COR-91", "descripcion": "Correa estriada", "destinatario": "Compras",
+            "solicitada_el": (self.hoy - timedelta(days=2)).isoformat(),
+        }
+        self.respuesta = {
+            "recibida_el": (self.hoy - timedelta(days=1)).isoformat(), "fuente": "Proveedor ficticio",
+            "precio": "1250.50", "moneda": "ars", "vigente_hasta": (self.hoy + timedelta(days=10)).isoformat(),
+            "respuesta": "Precio confirmado por Compras.",
+        }
+
+    def test_bandeja_respuestas_y_actualizacion_sin_sobrescribir(self):
+        nueva = reverse("nueva_solicitud_precio")
+        vista = reverse("solicitudes_precio")
+        self.client.post(nueva, self.datos)
+        original = SolicitudPrecio.objects.get()
+        enlace = reverse("solicitud_precio", args=[original.pk])
+        self.assertContains(self.client.get(vista, {"q": "COR-91", "estado": "pendiente"}), enlace)
+        self.assertContains(self.client.get(vista, {"q": "estriada"}), enlace)
+        responder = reverse("responder_solicitud_precio", args=[original.pk])
+        for _ in range(2):
+            self.assertRedirects(self.client.post(responder, self.respuesta), enlace)
+        self.assertEqual(original.respuestas.count(), 1)
+        self.assertEqual(original.respuestas.get().moneda, "ARS")
+        self.assertEqual(original.respuestas.get().precio, Decimal("1250.50"))
+        self.assertContains(self.client.get(enlace), "Proveedor ficticio")
+        self.assertNotContains(self.client.get(vista, {"estado": "pendiente"}), enlace)
+        self.assertContains(self.client.get(vista, {"estado": "respondida"}), enlace)
+
+        actualizar = reverse("actualizar_solicitud_precio", args=[original.pk])
+        self.assertContains(self.client.get(actualizar), "Consultar precios anteriores")
+        self.client.post(actualizar, {**self.datos, "solicitada_el": self.hoy.isoformat()})
+        actualizacion = original.actualizaciones.get()
+        self.client.post(reverse("responder_solicitud_precio", args=[actualizacion.pk]), {
+            **self.respuesta, "recibida_el": self.hoy.isoformat(), "precio": "1500",
+        })
+        self.assertEqual(actualizacion.respuestas.get().precio, Decimal("1500"))
+        self.assertEqual(original.respuestas.get().precio, Decimal("1250.50"))
+        self.assertContains(self.client.get(enlace), reverse("solicitud_precio", args=[actualizacion.pk]))
+
+    def test_valida_fechas_y_restringe_acceso(self):
+        self.client.post(reverse("nueva_solicitud_precio"), self.datos)
+        solicitud = SolicitudPrecio.objects.get()
+        responder = reverse("responder_solicitud_precio", args=[solicitud.pk])
+        fecha_anterior = (self.hoy - timedelta(days=3)).isoformat()
+        respuesta = self.client.post(responder, {**self.respuesta, "recibida_el": fecha_anterior})
+        self.assertContains(respuesta, "La respuesta no puede ser anterior")
+        respuesta = self.client.post(responder, {**self.respuesta, "vigente_hasta": fecha_anterior})
+        self.assertContains(respuesta, "La vigencia no puede terminar antes")
+        self.assertFalse(RespuestaPrecio.objects.exists())
+        campo = User.objects.create_user("campo.precios")
+        campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(campo)
+        self.assertEqual(self.client.get(reverse("solicitudes_precio")).status_code, 403)
+        self.assertEqual(self.client.post(responder, self.respuesta).status_code, 403)
+
+    def test_vinculos_a_cotizacion_y_repuesto_sin_perder_historial(self):
+        cliente = Cliente.objects.create(codigo="TE-91", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        ticket = Ticket.objects.create(asunto="Trabajo ficticio", cliente_ficha=cliente, creado_por=self.comercial)
+        cotizacion = ticket.cotizaciones.create(alcance="Verificar correas")
+        self.client.post(reverse("precio_cotizacion", args=[cotizacion.pk]), self.datos)
+        precio = cotizacion.solicitudes_precio.get()
+        self.assertContains(self.client.get(reverse("cotizacion", args=[cotizacion.pk])), precio.descripcion)
+
+        tecnica = ticket.solicitudes_cotizacion.create(
+            solicitante=self.comercial, memoria="Revisar la correa", cantidad_tecnicos=1, horas_por_tecnico=1,
+        )
+        repuesto = tecnica.repuestos.create(descripcion="Correa estriada", referencia="COR-91", cantidad=1)
+        alta = reverse("precio_repuesto", args=[repuesto.pk])
+        self.assertContains(self.client.get(alta), "Consultar precios anteriores")
+        self.client.post(alta, self.datos)
+        solicitud = repuesto.solicitudes_precio.get()
+        repuesto.delete()
+        solicitud.refresh_from_db()
+        self.assertIsNone(solicitud.repuesto_id)
+        self.assertEqual(solicitud.codigo, "COR-91")

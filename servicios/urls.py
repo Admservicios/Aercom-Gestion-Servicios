@@ -1,6 +1,6 @@
 from django.contrib.auth import views as auth
 from django.urls import path
-from . import abonos, alertas, catalogo, cotizaciones, mantenimiento, solicitudes, views
+from . import abonos, alertas, catalogo, cotizaciones, mantenimiento, precios, solicitudes, views
 
 urlpatterns = [
     path("", views.inicio, name="inicio"),
@@ -37,6 +37,13 @@ urlpatterns = [
     path("cotizaciones/<int:pk>/enviar/", cotizaciones.registrar_envio, name="enviar_cotizacion"),
     path("cotizaciones/<int:pk>/respuesta/", cotizaciones.registrar_respuesta, name="respuesta_cotizacion"),
     path("solicitudes-cotizacion/<int:solicitud_id>/cotizar/", cotizaciones.nueva, name="cotizar_solicitud"),
+    path("solicitudes-precios/", precios.lista, name="solicitudes_precio"),
+    path("solicitudes-precios/nueva/", precios.nueva, name="nueva_solicitud_precio"),
+    path("solicitudes-precios/<int:pk>/", precios.detalle, name="solicitud_precio"),
+    path("solicitudes-precios/<int:pk>/responder/", precios.responder, name="responder_solicitud_precio"),
+    path("solicitudes-precios/<int:anterior_id>/actualizar/", precios.nueva, name="actualizar_solicitud_precio"),
+    path("cotizaciones/<int:cotizacion_id>/precios/nueva/", precios.nueva, name="precio_cotizacion"),
+    path("repuestos/<int:repuesto_id>/precios/nueva/", precios.nueva, name="precio_repuesto"),
     path("tickets/nuevo/", views.nuevo, name="nuevo"),
     path("tickets/<int:pk>/", views.ticket, name="ticket"),
     path("tickets/<int:pk>/vincular/", views.vincular_ticket, name="vincular_ticket"),

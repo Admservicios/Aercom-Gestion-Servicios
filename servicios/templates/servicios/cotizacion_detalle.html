@@ -39,6 +39,17 @@
   </form>
   {% endif %}
 </article>
+{% if puede_gestionar_cotizaciones %}
+<article>
+  <h2>Solicitudes de precios</h2>
+  <p><a href="{% url 'precio_cotizacion' cotizacion.pk %}">Registrar solicitud de precio</a></p>
+  <ul>
+    {% for solicitud in cotizacion.solicitudes_precio.all %}
+    <li><a href="{% url 'solicitud_precio' solicitud.pk %}">{{ solicitud.descripcion }}</a> · {{ solicitud.solicitada_el|date:"d/m/Y" }}</li>
+    {% empty %}<li>Sin solicitudes registradas.</li>{% endfor %}
+  </ul>
+</article>
+{% endif %}
 <article>
   <h2>Historial</h2>
   <ul>

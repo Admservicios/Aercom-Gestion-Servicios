@@ -404,3 +404,65 @@ class CambioCotizacion(models.Model):
 
     class Meta:
         ordering = ("-pk",)
+
+
+class SolicitudPrecio(models.Model):
+    codigo = models.CharField("Código", max_length=80, blank=True)
+    descripcion = models.CharField("Descripción del repuesto o insumo", max_length=160)
+    destinatario = models.CharField(max_length=120)
+    solicitada_el = models.DateField("Fecha de solicitud")
+    solicitante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    cotizacion = models.ForeignKey(
+        Cotizacion, on_delete=models.PROTECT, blank=True, null=True, related_name="solicitudes_precio",
+    )
+    repuesto = models.ForeignKey(
+        RepuestoSolicitud, on_delete=models.SET_NULL, blank=True, null=True, related_name="solicitudes_precio",
+    )
+    anterior = models.ForeignKey(
+        "self", on_delete=models.PROTECT, blank=True, null=True, related_name="actualizaciones",
+    )
+
+    class Meta:
+        ordering = ("-solicitada_el", "-pk")
+
+    def clean(self):
+        if self.solicitada_el and self.solicitada_el > timezone.localdate():
+            raise ValidationError({"solicitada_el": "La fecha de solicitud no puede ser futura."})
+        if self.solicitada_el and self.anterior_id and self.solicitada_el < self.anterior.solicitada_el:
+            raise ValidationError({"solicitada_el": "La actualización no puede ser anterior a la solicitud previa."})
+
+
+class RespuestaPrecio(models.Model):
+    solicitud = models.ForeignKey(SolicitudPrecio, on_delete=models.PROTECT, related_name="respuestas")
+    recibida_el = models.DateField("Fecha de respuesta")
+    fuente = models.CharField("Proveedor o fuente", max_length=160)
+    precio = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
+    moneda = models.CharField(
+        max_length=3, validators=[RegexValidator(r"^[A-Z]{3}\Z", "Ingresá un código como ARS o USD.")],
+    )
+    vigente_hasta = models.DateField("Vigente hasta", blank=True, null=True)
+    respuesta = models.TextField("Detalle o referencia de la respuesta", blank=True)
+    registrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    registrado_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-recibida_el", "-pk")
+        constraints = [
+            models.CheckConstraint(condition=models.Q(precio__gte=0), name="respuesta_precio_no_negativo"),
+            models.CheckConstraint(
+                condition=models.Q(vigente_hasta__isnull=True) | models.Q(vigente_hasta__gte=models.F("recibida_el")),
+                name="respuesta_precio_vigencia_ordenada",
+            ),
+        ]
+
+    def clean(self):
+        errores = {}
+        if self.recibida_el:
+            if self.recibida_el > timezone.localdate():
+                errores["recibida_el"] = "La fecha de respuesta no puede ser futura."
+            elif self.solicitud_id and self.recibida_el < self.solicitud.solicitada_el:
+                errores["recibida_el"] = "La respuesta no puede ser anterior a la solicitud."
+            if self.vigente_hasta and self.vigente_hasta < self.recibida_el:
+                errores["vigente_hasta"] = "La vigencia no puede terminar antes de la respuesta."
+        if errores:
+            raise ValidationError(errores)
