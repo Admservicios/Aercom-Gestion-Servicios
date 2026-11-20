@@ -13,18 +13,48 @@
   <div class="superficie-listado">
     <table class="tabla-oficina" aria-labelledby="previa-{{ forloop.counter }}" role="table">
       <thead role="rowgroup">
-        <tr role="row"><th scope="col">Fila</th><th scope="col">Registro</th><th scope="col">Resultado</th><th scope="col">Motivo</th></tr>
+        <tr role="row"><th scope="col">Fila original</th><th scope="col">Dato encontrado</th><th scope="col">Resultado y motivo</th></tr>
       </thead>
       <tbody role="rowgroup">
         {% for resultado in filas %}
         <tr role="row">
-          <td role="cell"><span class="previa-numero"><span>Fila </span>{{ resultado.fila.numero }}</span></td>
           <td class="previa-registro" role="cell">
+            <small>Fila {{ resultado.fila.numero }}</small>
             <strong>{{ resultado.fila.identificacion }}</strong>
-            <small>{% if resultado.fila.datos.nombre %}{{ resultado.fila.datos.nombre }}{% else %}{{ resultado.fila.datos.alcance }}{% endif %}</small>
+            {% with datos=resultado.fila.datos %}
+            {% if "codigo" in datos %}
+            <small>{{ datos.nombre|default:"Sin nombre" }}</small>
+            <small>Planta {{ datos.planta_codigo|default:"sin identificar" }}{% if datos.numero_serie %} · Serie {{ datos.numero_serie }}{% endif %}</small>
+            {% else %}
+            <small>{{ datos.moneda }} {{ datos.valor }} · {{ datos.alcance }}</small>
+            <small>Plantas {{ datos.plantas_codigos|default:"—" }} · Equipos {{ datos.equipos_codigos|default:"—" }}</small>
+            {% endif %}
+            {% endwith %}
+            <details class="previa-celdas">
+              <summary>Ver celdas de la fila {{ resultado.fila.numero }}</summary>
+              <dl>
+                {% for campo, valor in resultado.fila.datos_originales %}
+                <div><dt>{{ campo }}</dt><dd>{{ valor }}</dd></div>
+                {% endfor %}
+              </dl>
+            </details>
           </td>
-          <td role="cell"><span class="etiqueta-oficina{% if resultado.estado == 'Coincide' %} etiqueta-completa{% elif resultado.estado == 'Se crearía' %} etiqueta-curso{% elif resultado.estado == 'Revisar' %} etiqueta-espera{% endif %}">{{ resultado.estado }}</span></td>
-          <td class="previa-motivo" role="cell">{{ resultado.motivo }}</td>
+          <td class="previa-encontrados" role="cell">
+            {% for hallazgo in resultado.encontrados %}
+            <div class="previa-hallazgo">
+              <strong>{{ hallazgo.fuente }}</strong>
+              <dl>
+                {% for campo, valor in hallazgo.campos %}
+                <div><dt>{{ campo }}</dt><dd>{{ valor }}</dd></div>
+                {% endfor %}
+              </dl>
+            </div>
+            {% empty %}<small>Sin ficha o fila coincidente.</small>{% endfor %}
+          </td>
+          <td class="previa-motivo" role="cell">
+            <span class="etiqueta-oficina{% if resultado.estado == 'Coincide' %} etiqueta-completa{% elif resultado.estado == 'Se crearía' or resultado.estado == 'Posible traslado' or resultado.estado == 'Posible desglose de cobertura' %} etiqueta-curso{% elif resultado.estado == 'Revisar' %} etiqueta-espera{% endif %}">{{ resultado.estado }}</span>
+            <p>{{ resultado.motivo }}</p>
+          </td>
         </tr>
         {% endfor %}
       </tbody>

@@ -272,13 +272,15 @@
 .previa-seccion { margin-top: 1.25rem; }
 .previa-seccion h2 { margin: 0 0 .5rem; font-size: 1.15rem; }
 .previa-registro { width: 34%; }
-.previa-numero span { display: none; }
+.previa-encontrados { width: 36%; }
+.previa-motivo p { margin: .4rem 0 0; }
+.previa-celdas { margin-top: .45rem; }
+.previa-celdas summary { display: list-item; padding: .35rem 0; font-size: .82rem; color: var(--enlace); }
+.previa-hallazgo + .previa-hallazgo { margin-top: .6rem; }
+.previa-hallazgo dl div, .previa-celdas dl div { display: flex; flex-wrap: wrap; column-gap: .45rem; margin: .15rem 0; }
+.previa-hallazgo dd, .previa-celdas dd { font-size: .85rem; }
 
 @media (max-width: 42rem) {
-    .previa-numero span { display: inline; }
-    .previa-registro, .previa-motivo { width: 100%; }
-}
-
-@media (width > 42rem) {
-    .previa-seccion tr > :is(:first-child, :nth-child(3)) { width: 1%; white-space: nowrap; }
+    .previa-registro, .previa-encontrados, .previa-motivo { width: 100%; }
+    .tabla-oficina td.previa-encontrados { padding-left: .65rem; border-left: 2px solid var(--borde); }
 }

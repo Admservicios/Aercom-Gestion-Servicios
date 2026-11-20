@@ -2,3 +2,7 @@ cliente_codigo,referencia,vigente_desde,vigente_hasta,alcance,frecuencia,cobertu
 DEMO-AB-01,AB-DEMO-01,2026-01-01,,Mantenimiento preventivo y lavado del generador en Planta Norte.,Mensual,no,DEMO-NORTE,DEMO-GE-01,125000.00,ARS,si,no,,
 DEMO-AB-01,AB-FICT-82C,2026-11-01,,Mantenimiento de la bomba auxiliar del depósito.,Mensual,no,DEMO-DEPOSITO,FICT-82C-03,35000.00,ARS,no,no,,
 DEMO-AB-01,AB-FICT-82C-REV,2026-11-01,,Revisión programada del generador móvil.,Mensual,no,,FICT-82C-04,14500.00,ARS,no,no,,
+DEMO-AB-01,AB-FICT-COB,2026-11-01,,Mantenimiento preventivo de ambas sedes.,Mensual,no,DEMO-NORTE,DEMO-GE-01,45000.00,ARS,no,no,,
+DEMO-AB-01,AB-FICT-COB,2026-11-01,,Mantenimiento preventivo de ambas sedes.,Mensual,no,DEMO-DEPOSITO,FICT-82C-03,45000.00,ARS,no,no,,
+DEMO-AB-01,AB-FICT-DIF,2026-11-01,,Control preventivo.,Mensual,no,DEMO-NORTE,DEMO-GE-01,50000.00,ARS,no,no,,
+DEMO-AB-01,AB-FICT-DIF,2026-11-01,,Control preventivo y lavado.,Mensual,no,DEMO-NORTE,DEMO-GE-01,65000.00,ARS,no,no,,
