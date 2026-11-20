@@ -1,0 +1,11 @@
+{$AERCOM_HOST} {
+	handle /static/* {
+		root * /srv
+		uri strip_prefix /static
+		file_server
+	}
+
+	handle {
+		reverse_proxy app:8000
+	}
+}
