@@ -10,7 +10,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from servicios.models import (
-    Accion, Cliente, ContactoCliente, ContratoAbono, DocumentoCliente, Equipo, Planta, Ticket,
+    Accion, Cliente, ContactoCliente, ContratoAbono, DocumentoCliente, Equipo, Planta, RegistroMantenimiento, Ticket,
 )
 from servicios.permisos import ROLES_SERVICIOS, Rol
 
@@ -79,7 +79,7 @@ class Command(BaseCommand):
             cliente=abonado, codigo="DEMO-DEPOSITO", defaults={"nombre": "Depósito (demo)"},
         )
         equipo, _ = Equipo.objects.get_or_create(
-            cliente=abonado, codigo="DEMO-GE-01", defaults={"nombre": "Generador GE-01", "planta": planta},
+            cliente=abonado, codigo="DEMO-GE-01", defaults={"nombre": "Generador GE-01", "planta": planta, "ubicacion": "Sala técnica (demo)"},
         )
         Equipo.objects.get_or_create(
             cliente=abonado, codigo="DEMO-CO-02", defaults={"nombre": "Compresor CO-02", "planta": deposito},
@@ -112,6 +112,15 @@ class Command(BaseCommand):
         if nuevo_contrato:
             contrato.plantas.add(planta)
             contrato.equipos.add(equipo)
+        RegistroMantenimiento.objects.get_or_create(
+            equipo=equipo, fecha=date(2026, 6, 15), referencia_sap="DEMO-MAN-01",
+            defaults={
+                "visita_realizada": True, "bateria": RegistroMantenimiento.EstadoControl.REALIZADO,
+                "prueba_con_carga": RegistroMantenimiento.EstadoControl.PENDIENTE,
+                "observaciones": "Coordinar la prueba con carga para la próxima visita.",
+                "registrado_por": ines,
+            },
+        )
         if {"oficina.demo", "campo.demo"} <= nuevas:
             ticket = Ticket.objects.create(
                 asunto="Lavado y revisión de vibración", cliente_ficha=abonado,

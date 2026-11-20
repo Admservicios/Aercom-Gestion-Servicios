@@ -101,8 +101,11 @@ def equipos(request):
 @oficina_requerida
 def equipo(request, pk):
     registro = get_object_or_404(Equipo.objects.select_related("cliente", "planta"), pk=pk)
+    historial = registro.registros_mantenimiento.select_related("registrado_por")
     return render(request, "servicios/equipo.html", {
         "equipo": registro, "tickets": registro.tickets.order_by("-pk"),
+        "ultima_visita": historial.filter(visita_realizada=True).values_list("fecha", flat=True).first(),
+        "pagina": Paginator(historial, 20).get_page(request.GET.get("page")),
     })
 
 

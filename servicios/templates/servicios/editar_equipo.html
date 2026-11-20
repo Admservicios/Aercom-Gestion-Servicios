@@ -1,0 +1,6 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'equipo' equipo.pk %}">Volver a {{ equipo.nombre }}</a></p>
+<h1>{{ titulo }}</h1>
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>{{ texto_boton }}</button></form></article>
+{% endblock %}

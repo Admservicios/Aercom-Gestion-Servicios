@@ -20,6 +20,7 @@ ROLES_OFICINA = {
 }
 ROLES_SERVICIOS = ROLES_OFICINA | {Rol.CAMPO}
 ROLES_EDICION_CATALOGO = {Rol.RESPONSABLE, Rol.ADMINISTRACION, Rol.OFICINA_ANTERIOR}
+ROLES_REGISTRO_MANTENIMIENTO = ROLES_EDICION_CATALOGO | {Rol.RESPONSABLE_TECNICO}
 
 
 def roles(usuario):
@@ -52,6 +53,7 @@ oficina_requerida = requiere_roles(ROLES_OFICINA)
 campo_requerido = requiere_roles({Rol.CAMPO})
 servicios_requeridos = requiere_roles(ROLES_SERVICIOS)
 edicion_catalogo_requerida = requiere_roles(ROLES_EDICION_CATALOGO)
+registro_mantenimiento_requerido = requiere_roles(ROLES_REGISTRO_MANTENIMIENTO)
 
 
 def menu_por_rol(request):
@@ -60,4 +62,5 @@ def menu_por_rol(request):
         "es_oficina": bool(asignados & ROLES_OFICINA),
         "es_campo": Rol.CAMPO in asignados,
         "puede_editar_catalogo": bool(asignados & ROLES_EDICION_CATALOGO),
+        "puede_registrar_mantenimiento": bool(asignados & ROLES_REGISTRO_MANTENIMIENTO),
     }

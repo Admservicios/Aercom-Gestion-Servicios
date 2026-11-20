@@ -2,14 +2,42 @@
 {% block contenido %}
 <p><a href="{% url 'equipos' %}">Volver a equipos</a></p>
 <h1>{{ equipo.nombre }}</h1>
-<p><a class="boton" href="{% url 'nuevo' %}?cliente_ficha={{ equipo.cliente_id }}&amp;equipo_ficha={{ equipo.pk }}{% if equipo.planta_id %}&amp;planta_ficha={{ equipo.planta_id }}{% endif %}">Nuevo ticket</a></p>
+<p><a class="boton" href="{% url 'nuevo' %}?cliente_ficha={{ equipo.cliente_id }}&amp;equipo_ficha={{ equipo.pk }}{% if equipo.planta_id %}&amp;planta_ficha={{ equipo.planta_id }}{% endif %}">Nuevo ticket</a>
+{% if puede_editar_catalogo %} · <a href="{% url 'editar_equipo' equipo.pk %}">Editar identificación</a>{% endif %}
+</p>
 <article>
   <dl>
     <dt>Código</dt><dd>{{ equipo.codigo }}</dd>
     <dt>Cliente</dt><dd><a href="{% url 'cliente' equipo.cliente_id %}">{{ equipo.cliente.nombre }}</a></dd>
     <dt>Planta</dt><dd>{% if equipo.planta_id %}<a href="{% url 'planta' equipo.planta_id %}">{{ equipo.planta.nombre }}</a>{% else %}Sin planta registrada{% endif %}</dd>
-    {% if equipo.numero_serie %}<dt>Número de serie</dt><dd>{{ equipo.numero_serie }}</dd>{% endif %}
+    <dt>Número de serie</dt><dd>{{ equipo.numero_serie|default:"Sin registrar" }}</dd>
+    <dt>Ubicación dentro de la planta</dt><dd>{{ equipo.ubicacion|default:"Sin registrar" }}</dd>
+    <dt>Última visita registrada</dt><dd>{% if ultima_visita %}{{ ultima_visita|date:"d/m/Y" }}{% else %}Sin visitas registradas{% endif %}</dd>
   </dl>
+</article>
+<article id="mantenimiento">
+  <h2>Historial de mantenimiento</h2>
+  {% if puede_registrar_mantenimiento %}
+  <p><a class="boton" href="{% url 'nuevo_mantenimiento' equipo.pk %}">Registrar mantenimiento</a></p>
+  {% endif %}
+  {% for registro in pagina %}
+  <details>
+    <summary>{{ registro.fecha|date:"d/m/Y" }} · {% if registro.visita_realizada %}Visita realizada{% else %}Control u observación{% endif %}</summary>
+    {% with controles=registro.controles_informados %}
+    {% if controles %}
+    <dl>
+      {% for nombre, estado in controles %}<dt>{{ nombre|capfirst }}</dt><dd>{{ estado }}</dd>{% endfor %}
+    </dl>
+    {% endif %}
+    {% endwith %}
+    {% if registro.referencia_sap %}<p>Llamada o referencia SAP: {{ registro.referencia_sap }}</p>{% endif %}
+    {{ registro.observaciones|linebreaks }}
+    <p class="contexto">Registrado por {{ registro.registrado_por.get_full_name|default:registro.registrado_por.username }} · {{ registro.registrado_el|date:"d/m/Y H:i" }}</p>
+  </details>
+  {% empty %}
+  <p>Sin registros de mantenimiento.</p>
+  {% endfor %}
+  {% include "servicios/paginacion.html" %}
 </article>
 {% include "servicios/tickets_vinculados.html" %}
 {% endblock %}

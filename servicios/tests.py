@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from secrets import token_urlsafe
 
@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Equipo, Planta, Ticket
+from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Equipo, Planta, RegistroMantenimiento, Ticket
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -442,3 +442,64 @@ class ContratosAbonoTest(TestCase):
         campo.groups.add(Group.objects.get(name=Rol.CAMPO))
         self.client.force_login(campo)
         self.assertEqual(self.client.get(detalle).status_code, 403)
+
+
+class MantenimientoEquipoTest(TestCase):
+    def setUp(self):
+        self.tecnica = User.objects.create_user("tecnica.mantenimiento")
+        self.tecnica.groups.add(Group.objects.create(name=Rol.RESPONSABLE_TECNICO))
+        self.client.force_login(self.tecnica)
+        self.cliente = Cliente.objects.create(codigo="AB-01", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.planta = self.cliente.plantas.create(codigo="P1", nombre="Planta Norte")
+        self.equipo = self.cliente.equipos.create(planta=self.planta, codigo="GE", nombre="Generador")
+        self.alta = reverse("nuevo_mantenimiento", args=[self.equipo.pk])
+        self.ficha = reverse("equipo", args=[self.equipo.pk])
+
+    def test_distingue_ultima_visita_y_control_posterior(self):
+        visita = timezone.localdate() - timedelta(days=3)
+        control = timezone.localdate() - timedelta(days=1)
+        respuesta = self.client.post(self.alta, {
+            "fecha": visita.isoformat(), "visita_realizada": "on",
+            "bateria": RegistroMantenimiento.EstadoControl.REALIZADO, "referencia_sap": "NS-FICTICIA-01",
+        })
+        self.assertRedirects(respuesta, self.ficha)
+        respuesta = self.client.post(self.alta, {
+            "fecha": control.isoformat(), "prueba_con_carga": RegistroMantenimiento.EstadoControl.PENDIENTE,
+            "observaciones": "Coordinar con el electricista.",
+        })
+        self.assertRedirects(respuesta, self.ficha)
+        ficha = self.client.get(self.ficha)
+        self.assertEqual(ficha.context["ultima_visita"], visita)
+        self.assertEqual([registro.fecha for registro in ficha.context["pagina"]], [control, visita])
+        for texto in ("Prueba con carga", "Coordinar con el electricista.", "NS-FICTICIA-01", "tecnica.mantenimiento"):
+            self.assertContains(ficha, texto)
+        self.assertEqual(self.equipo.registros_mantenimiento.first().registrado_por, self.tecnica)
+
+    def test_rechaza_registros_vacios_futuros_y_no_autorizados(self):
+        hoy = timezone.localdate()
+        respuesta = self.client.post(self.alta, {"fecha": hoy.isoformat()})
+        self.assertContains(respuesta, "Indicá un control, una visita, una referencia SAP o una observación.")
+        respuesta = self.client.post(self.alta, {"fecha": (hoy + timedelta(days=1)).isoformat(), "visita_realizada": "on"})
+        self.assertContains(respuesta, "La fecha del registro no puede ser futura.")
+        comercial = User.objects.create_user("comercial.mantenimiento")
+        comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(comercial)
+        self.assertContains(self.client.get(self.ficha), "Historial de mantenimiento")
+        self.assertEqual(self.client.post(self.alta, {"fecha": hoy.isoformat(), "visita_realizada": "on"}).status_code, 403)
+        self.assertFalse(RegistroMantenimiento.objects.exists())
+
+    def test_actualiza_identificacion_sin_mover_el_equipo(self):
+        editar = reverse("editar_equipo", args=[self.equipo.pk])
+        self.assertEqual(self.client.get(editar).status_code, 403)
+        self.tecnica.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        respuesta = self.client.post(editar, {
+            "nombre": "Generador principal", "numero_serie": "SERIE-DEMO", "ubicacion": "Sala de máquinas",
+            "planta": "", "codigo": "otro",
+        })
+        self.assertRedirects(respuesta, self.ficha)
+        self.equipo.refresh_from_db()
+        self.assertEqual(self.equipo.planta, self.planta)
+        self.assertEqual(self.equipo.codigo, "GE")
+        ficha = self.client.get(self.ficha)
+        self.assertContains(ficha, "SERIE-DEMO")
+        self.assertContains(ficha, "Sala de máquinas")

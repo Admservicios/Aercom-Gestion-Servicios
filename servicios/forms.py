@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import Cliente, ContactoCliente, ContratoAbono, DocumentoCliente, Equipo, Planta, Ticket
+from .models import Cliente, ContactoCliente, ContratoAbono, DocumentoCliente, Equipo, Planta, RegistroMantenimiento, Ticket
 
 
 class VinculoTicketForm(forms.ModelForm):
@@ -43,7 +43,7 @@ class PlantaForm(forms.ModelForm):
 class EquipoForm(forms.ModelForm):
     class Meta:
         model = Equipo
-        fields = ("cliente", "planta", "codigo", "nombre", "numero_serie")
+        fields = ("cliente", "planta", "codigo", "nombre", "numero_serie", "ubicacion")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -124,3 +124,24 @@ class ContratoAbonoForm(forms.ModelForm):
             if anteriores.exclude(pk=self.instance.pk).exists():
                 self.add_error("referencia", "Ya existe un contrato con esa referencia y fecha de inicio.")
         return datos
+
+
+
+class IdentificacionEquipoForm(forms.ModelForm):
+    class Meta:
+        model = Equipo
+        fields = ("nombre", "numero_serie", "ubicacion")
+
+
+class RegistroMantenimientoForm(forms.ModelForm):
+    class Meta:
+        model = RegistroMantenimiento
+        fields = (
+            "fecha", "visita_realizada", *RegistroMantenimiento.CONTROLES,
+            "observaciones", "referencia_sap",
+        )
+        widgets = {"fecha": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"})}
+        help_texts = {
+            "visita_realizada": "Marcá esta opción si el registro corresponde a una visita que ya se hizo.",
+            "observaciones": "Podés anotar mediciones, resultados o qué queda pendiente.",
+        }

@@ -82,6 +82,7 @@ class Equipo(models.Model):
     codigo = models.CharField("Código", max_length=40)
     nombre = models.CharField(max_length=100)
     numero_serie = models.CharField("Número de serie", max_length=100, blank=True)
+    ubicacion = models.CharField("Ubicación", max_length=200, blank=True)
 
     class Meta:
         ordering = ("nombre", "codigo")
@@ -95,6 +96,48 @@ class Equipo(models.Model):
     def clean(self):
         if self.planta_id and self.planta.cliente_id != self.cliente_id:
             raise ValidationError({"planta": "La planta debe pertenecer al cliente seleccionado."})
+
+
+class RegistroMantenimiento(models.Model):
+    class EstadoControl(models.TextChoices):
+        SIN_REGISTRAR = "", "Sin registrar"
+        REALIZADO = "realizado", "Realizado"
+        PENDIENTE = "pendiente", "Pendiente"
+        REQUIERE_ATENCION = "requiere_atencion", "Requiere atención"
+        NO_APLICA = "no_aplica", "No aplica"
+
+    CONTROLES = ("bateria", "preventivo", "refrigerante", "combustible", "prueba_con_carga")
+
+    equipo = models.ForeignKey(Equipo, on_delete=models.PROTECT, related_name="registros_mantenimiento")
+    fecha = models.DateField("Fecha del registro")
+    visita_realizada = models.BooleanField("Corresponde a una visita realizada", default=False)
+    bateria = models.CharField("Batería", max_length=20, choices=EstadoControl, blank=True)
+    preventivo = models.CharField("Mantenimiento preventivo", max_length=20, choices=EstadoControl, blank=True)
+    refrigerante = models.CharField(max_length=20, choices=EstadoControl, blank=True)
+    combustible = models.CharField(max_length=20, choices=EstadoControl, blank=True)
+    prueba_con_carga = models.CharField(max_length=20, choices=EstadoControl, blank=True)
+    observaciones = models.TextField(blank=True)
+    referencia_sap = models.CharField("Llamada o referencia SAP", max_length=80, blank=True)
+    registrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    registrado_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-fecha", "-pk")
+        indexes = [models.Index(fields=("equipo", "-fecha", "-id"), name="mantenimiento_equipo_fecha")]
+
+    def clean(self):
+        if self.fecha and self.fecha > timezone.localdate():
+            raise ValidationError({"fecha": "La fecha del registro no puede ser futura."})
+        if not (self.visita_realizada or self.observaciones or self.referencia_sap
+                or any(getattr(self, campo) for campo in self.CONTROLES)):
+            raise ValidationError("Indicá un control, una visita, una referencia SAP o una observación.")
+
+    def controles_informados(self):
+        return [
+            (self._meta.get_field(campo).verbose_name, getattr(self, f"get_{campo}_display")())
+            for campo in self.CONTROLES
+            if getattr(self, campo)
+        ]
 
 
 class ContratoAbono(models.Model):
