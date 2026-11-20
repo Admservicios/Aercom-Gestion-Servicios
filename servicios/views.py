@@ -114,8 +114,10 @@ def vincular_ticket(request, pk):
     cliente_anterior = registro.cliente_ficha_id
     form = VinculoTicketForm(request.POST if request.method == "POST" else None, instance=registro)
     if form.is_bound and form.is_valid():
-        if registro.cliente_ficha_id != cliente_anterior and registro.solicitudes_cotizacion.exists():
-            form.add_error("cliente_ficha", "El ticket tiene solicitudes de cotización asociadas. Conservá su cliente.")
+        if registro.cliente_ficha_id != cliente_anterior and (
+            registro.solicitudes_cotizacion.exists() or registro.cotizaciones.exists()
+        ):
+            form.add_error("cliente_ficha", "El ticket tiene solicitudes o cotizaciones asociadas. Conservá su cliente.")
         else:
             form.instance.save(update_fields=VinculoTicketForm.Meta.fields)
             return redirect("ticket", pk=pk)
@@ -129,6 +131,7 @@ def ver_ticket(request, registro, form, estado_form=None, accion_id=None):
     return render(request, "servicios/ticket.html", {
         "ticket": registro, "acciones": acciones, "form": form,
         "solicitudes_cotizacion": solicitudes_visibles(request.user).filter(ticket=registro),
+        "cotizaciones": registro.cotizaciones.all(),
         "estado_form": estado_form or EstadoForm(auto_id=False), "accion_id": accion_id,
     })
 

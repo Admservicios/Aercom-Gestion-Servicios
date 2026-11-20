@@ -357,3 +357,50 @@ class CambioSolicitud(models.Model):
 
     class Meta:
         ordering = ("-pk",)
+
+
+class Cotizacion(models.Model):
+    class Estado(models.TextChoices):
+        PREPARACION = "preparacion", "En preparación"
+        ENVIADA = "enviada", "Enviada"
+        APROBADA = "aprobada", "Aprobada"
+        RECHAZADA = "rechazada", "Rechazada"
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="cotizaciones")
+    solicitud = models.ForeignKey(
+        SolicitudCotizacion, on_delete=models.PROTECT, related_name="cotizaciones", blank=True, null=True,
+    )
+    referencia = models.CharField("Referencia de presupuesto", max_length=100, blank=True)
+    alcance = models.TextField()
+    importe = models.DecimalField(
+        max_digits=14, decimal_places=2, blank=True, null=True, validators=[MinValueValidator(0)],
+    )
+    moneda = models.CharField(
+        max_length=3, blank=True, validators=[RegexValidator(r"^[A-Z]{3}\Z", "Ingresá un código como ARS o USD.")],
+    )
+    estado = models.CharField(max_length=12, choices=Estado, default=Estado.PREPARACION)
+    confirmacion_correo = models.CharField("Referencia de confirmación por correo", max_length=240, blank=True)
+    orden_compra = models.CharField("Número o referencia de OC recibida", max_length=120, blank=True)
+
+    class Meta:
+        ordering = ("-pk",)
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(importe__gte=0) | models.Q(importe__isnull=True), name="cotizacion_importe_no_negativo",
+            ),
+        ]
+
+    def clean(self):
+        if self.solicitud_id and self.solicitud.ticket_id != self.ticket_id:
+            raise ValidationError({"solicitud": "La solicitud técnica debe corresponder al ticket de la cotización."})
+
+
+class CambioCotizacion(models.Model):
+    cotizacion = models.ForeignKey(Cotizacion, on_delete=models.CASCADE, related_name="cambios")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    estado = models.CharField(max_length=12, choices=Cotizacion.Estado)
+    nota = models.TextField(blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)

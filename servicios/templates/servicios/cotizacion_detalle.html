@@ -1,0 +1,52 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+{% if cotizacion.ticket.cliente_ficha.tipo == "tercero" %}
+<p><a href="{% url 'cotizaciones_terceros' %}">Volver a cotizaciones de terceros</a></p>
+{% endif %}
+<p class="contexto" id="estado-cotizacion">C-{{ cotizacion.pk }} · {{ cotizacion.get_estado_display }}</p>
+<h1>{{ cotizacion.referencia|default:cotizacion.ticket.asunto }}</h1>
+<p><a href="{% url 'cliente' cotizacion.ticket.cliente_ficha_id %}">{{ cotizacion.ticket.cliente_nombre }}</a>
+· {{ cotizacion.ticket.cliente_ficha.get_tipo_display }} · <a href="{% url 'ticket' cotizacion.ticket_id %}">Ticket T-{{ cotizacion.ticket_id }}</a></p>
+{% if cotizacion.solicitud_id %}
+<p>Solicitud técnica {% if puede_ver_solicitud %}<a href="{% url 'solicitud_cotizacion' cotizacion.solicitud_id %}">SC-{{ cotizacion.solicitud_id }}</a>{% else %}SC-{{ cotizacion.solicitud_id }}{% endif %}</p>
+{% endif %}
+<article>
+  <h2>Alcance e importe</h2>
+  {{ cotizacion.alcance|linebreaks }}
+  {% if cotizacion.importe is not None %}
+  <p>{{ cotizacion.moneda }} {{ cotizacion.importe|floatformat:2 }}</p>
+  {% else %}<p>Importe pendiente.</p>{% endif %}
+  {% if puede_editar %}
+  <p><a href="{% url 'editar_cotizacion' cotizacion.pk %}">Editar cotización</a></p>
+  {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="{% url 'enviar_cotizacion' cotizacion.pk %}">
+    {% csrf_token %}
+    <button>Registrar envío al cliente</button>
+  </form>
+  {% endif %}
+</article>
+<article>
+  <h2>Respuesta del cliente</h2>
+  <dl>
+    <dt>Confirmación por correo</dt><dd>{{ cotizacion.confirmacion_correo|default:"Sin registrar" }}</dd>
+    <dt>OC recibida</dt><dd>{{ cotizacion.orden_compra|default:"Sin registrar" }}</dd>
+  </dl>
+  {% if puede_responder %}
+  <form method="post" action="{% url 'respuesta_cotizacion' cotizacion.pk %}">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button>{% if cotizacion.estado == "aprobada" %}Actualizar respaldo{% else %}Registrar respuesta{% endif %}</button>
+  </form>
+  {% endif %}
+</article>
+<article>
+  <h2>Historial</h2>
+  <ul>
+    {% for cambio in cotizacion.cambios.all %}
+    <li>{{ cambio.get_estado_display }} · {{ cambio.autor.get_full_name|default:cambio.autor.username }} · {{ cambio.fecha|date:"d/m/Y H:i" }}
+      {% if cambio.nota %}<br>{{ cambio.nota|linebreaksbr }}{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</article>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>Cotizaciones de terceros</h1>
+<article>
+  <form method="get">
+    <label for="q">Buscar por número, referencia, cliente o asunto del ticket</label>
+    <input id="q" name="q" value="{{ consulta }}">
+    <button>Buscar</button>
+  </form>
+  {% for cotizacion in pagina %}
+  <p><a href="{% url 'cotizacion' cotizacion.pk %}">C-{{ cotizacion.pk }}{% if cotizacion.referencia %} · {{ cotizacion.referencia }}{% endif %}</a>
+    · {{ cotizacion.ticket.cliente_nombre }} · {{ cotizacion.ticket.asunto }} · {{ cotizacion.get_estado_display }}</p>
+  {% empty %}<p>Sin cotizaciones de terceros para mostrar.</p>{% endfor %}
+  {% include "servicios/paginacion.html" %}
+</article>
+{% endblock %}

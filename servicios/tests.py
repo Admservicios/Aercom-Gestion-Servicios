@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Equipo, Planta, RegistroMantenimiento, Ticket
+from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Cotizacion, Equipo, Planta, RegistroMantenimiento, Ticket
 from .models import SolicitudCotizacion
 from .permisos import ROLES_OFICINA, Rol
 
@@ -587,3 +587,72 @@ class SolicitudCotizacionTest(TestCase):
         self.client.force_login(self.revisora)
         self.assertContains(self.client.get(detalle), self.ticket.asunto)
         self.assertEqual(self.client.get(self.alta).status_code, 403)
+
+
+class CotizacionTest(TestCase):
+    def setUp(self):
+        self.comercial = User.objects.create_user("comercial.cotizacion")
+        self.comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(self.comercial)
+        self.abonado = Cliente.objects.create(codigo="AB-04", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.tercero = Cliente.objects.create(codigo="TE-04", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        self.ticket = Ticket.objects.create(asunto="Cambio de correas", cliente_ficha=self.tercero, creado_por=self.comercial)
+        self.nueva = reverse("nueva_cotizacion", args=[self.ticket.pk])
+
+    def test_directa_envio_aprobacion_y_oc_posterior(self):
+        datos = {"alcance": "Cambio de dos correas", "referencia": "PRES-44"}
+        respuesta = self.client.post(self.nueva, datos)
+        cotizacion = self.ticket.cotizaciones.get()
+        detalle = reverse("cotizacion", args=[cotizacion.pk])
+        enviar = reverse("enviar_cotizacion", args=[cotizacion.pk])
+        responder = reverse("respuesta_cotizacion", args=[cotizacion.pk])
+        editar = reverse("editar_cotizacion", args=[cotizacion.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertContains(self.client.post(enviar), "Completá el importe y la moneda")
+        self.assertRedirects(self.client.post(editar, {**datos, "importe": "15000", "moneda": "ars"}), detalle)
+        self.assertRedirects(self.client.post(enviar), detalle)
+        self.assertEqual(self.client.post(enviar).status_code, 404)
+        self.assertContains(self.client.post(responder, {"decision": "aprobada"}), "Registrá la confirmación")
+        correo = {"confirmacion_correo": "Correo del cliente"}
+        self.assertRedirects(self.client.post(responder, {"decision": "aprobada", **correo}), detalle)
+        respaldo = {**correo, "orden_compra": "OC-45"}
+        self.assertRedirects(self.client.post(responder, respaldo), detalle)
+        self.assertRedirects(self.client.post(responder, respaldo), detalle)
+        cotizacion.refresh_from_db()
+        self.assertEqual(cotizacion.estado, Cotizacion.Estado.APROBADA)
+        self.assertEqual(cotizacion.confirmacion_correo, "Correo del cliente")
+        self.assertEqual(cotizacion.orden_compra, "OC-45")
+        self.assertEqual(cotizacion.cambios.count(), 4)
+        self.assertContains(self.client.get(reverse("cotizaciones_terceros"), {"q": "PRES-44"}), "Aprobada")
+        self.assertContains(self.client.get(reverse("ticket", args=[self.ticket.pk])), detalle)
+
+    def test_solicitud_lista_y_cotizacion_de_abonado_en_su_ficha(self):
+        ticket = Ticket.objects.create(asunto="Revisión de abonado", cliente_ficha=self.abonado, creado_por=self.comercial)
+        solicitud = SolicitudCotizacion.objects.create(
+            ticket=ticket, solicitante=self.comercial, memoria="Analizar el alcance.", cantidad_tecnicos=2, horas_por_tecnico=3,
+        )
+        origen = reverse("cotizar_solicitud", args=[solicitud.pk])
+        self.assertEqual(self.client.get(origen).status_code, 404)
+        solicitud.estado = SolicitudCotizacion.Estado.LISTA
+        solicitud.save(update_fields=["estado"])
+        self.assertContains(self.client.get(origen), solicitud.memoria)
+        respuesta = self.client.post(origen, {"alcance": "Mano de obra y repuestos", "referencia": "AB-PRES-99"})
+        cotizacion = solicitud.cotizaciones.get()
+        self.assertRedirects(respuesta, reverse("cotizacion", args=[cotizacion.pk]))
+        self.assertNotContains(self.client.get(reverse("cotizaciones_terceros")), "AB-PRES-99")
+        self.assertContains(self.client.get(reverse("cliente", args=[self.abonado.pk])), "AB-PRES-99")
+
+    def test_rechazo_y_permiso_por_enlace_directo(self):
+        self.client.post(self.nueva, {"alcance": "Alcance ficticio", "importe": "100", "moneda": "USD"})
+        cotizacion = self.ticket.cotizaciones.get()
+        detalle = reverse("cotizacion", args=[cotizacion.pk])
+        self.client.post(reverse("enviar_cotizacion", args=[cotizacion.pk]))
+        respuesta = reverse("respuesta_cotizacion", args=[cotizacion.pk])
+        self.assertContains(self.client.post(respuesta, {"decision": "rechazada"}), "Indicá la respuesta")
+        self.assertRedirects(self.client.post(respuesta, {"decision": "rechazada", "nota": "Cliente desistió."}), detalle)
+        self.assertContains(self.client.get(detalle), "Cliente desistió.")
+        self.assertEqual(self.client.post(respuesta, {"decision": "aprobada", "orden_compra": "OC-90"}).status_code, 404)
+        campo = User.objects.create_user("campo.cotizacion")
+        campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(campo)
+        self.assertEqual(self.client.get(detalle).status_code, 403)

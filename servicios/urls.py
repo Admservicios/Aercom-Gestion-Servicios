@@ -1,6 +1,6 @@
 from django.contrib.auth import views as auth
 from django.urls import path
-from . import abonos, alertas, catalogo, mantenimiento, solicitudes, views
+from . import abonos, alertas, catalogo, cotizaciones, mantenimiento, solicitudes, views
 
 urlpatterns = [
     path("", views.inicio, name="inicio"),
@@ -31,10 +31,17 @@ urlpatterns = [
     path("solicitudes-cotizacion/<int:pk>/", solicitudes.detalle, name="solicitud_cotizacion"),
     path("solicitudes-cotizacion/<int:pk>/reenviar/", solicitudes.reenviar, name="reenviar_solicitud_cotizacion"),
     path("solicitudes-cotizacion/<int:pk>/revisar/", solicitudes.revisar, name="revisar_solicitud_cotizacion"),
+    path("cotizaciones/terceros/", cotizaciones.terceros, name="cotizaciones_terceros"),
+    path("cotizaciones/<int:pk>/", cotizaciones.detalle, name="cotizacion"),
+    path("cotizaciones/<int:pk>/editar/", cotizaciones.editar, name="editar_cotizacion"),
+    path("cotizaciones/<int:pk>/enviar/", cotizaciones.registrar_envio, name="enviar_cotizacion"),
+    path("cotizaciones/<int:pk>/respuesta/", cotizaciones.registrar_respuesta, name="respuesta_cotizacion"),
+    path("solicitudes-cotizacion/<int:solicitud_id>/cotizar/", cotizaciones.nueva, name="cotizar_solicitud"),
     path("tickets/nuevo/", views.nuevo, name="nuevo"),
     path("tickets/<int:pk>/", views.ticket, name="ticket"),
     path("tickets/<int:pk>/vincular/", views.vincular_ticket, name="vincular_ticket"),
     path("tickets/<int:ticket_id>/solicitudes/nueva/", solicitudes.nueva, name="nueva_solicitud_cotizacion"),
+    path("tickets/<int:ticket_id>/cotizaciones/nueva/", cotizaciones.nueva, name="nueva_cotizacion"),
     path("tickets/<int:pk>/acciones/", views.agregar, name="agregar"),
     path("acciones/<int:pk>/estado/", views.cambiar_estado, name="cambiar_estado"),
     path("acciones/<int:pk>/realizar/", views.realizar, name="realizar"),

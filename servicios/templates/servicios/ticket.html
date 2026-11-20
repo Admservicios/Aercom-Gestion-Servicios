@@ -31,6 +31,13 @@
 </ul>
 </article>
 {% endif %}
+<article>
+<h2>Cotizaciones</h2>
+{% if puede_gestionar_cotizaciones and ticket.cliente_ficha_id %}
+<p><a href="{% url 'nueva_cotizacion' ticket.pk %}">Nueva cotización directa</a></p>
+{% endif %}
+{% include "servicios/cotizaciones_vinculadas.html" %}
+</article>
 <h2>Acciones</h2>
 {% for accion in acciones %}
 <article id="accion-{{ accion.pk }}">

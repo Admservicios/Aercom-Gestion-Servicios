@@ -1,0 +1,8 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p>{% if es_nueva %}<a href="{% url 'ticket' cotizacion.ticket_id %}">Volver al ticket T-{{ cotizacion.ticket_id }}</a>
+{% else %}<a href="{% url 'cotizacion' cotizacion.pk %}">Volver a C-{{ cotizacion.pk }}</a>{% endif %}</p>
+<h1>{% if es_nueva %}Preparar cotización{% else %}Editar cotización{% endif %}</h1>
+<p>{{ cotizacion.ticket.cliente_nombre }} · {{ cotizacion.ticket.asunto }}{% if cotizacion.solicitud_id %} · Solicitud SC-{{ cotizacion.solicitud_id }}{% endif %}</p>
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Guardar cotización</button></form></article>
+{% endblock %}

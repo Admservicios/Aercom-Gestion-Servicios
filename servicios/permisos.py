@@ -63,6 +63,7 @@ def menu_por_rol(request):
     return {
         "es_oficina": bool(asignados & ROLES_OFICINA),
         "es_campo": Rol.CAMPO in asignados,
+        "puede_gestionar_cotizaciones": bool(asignados & ROLES_REVISION_COTIZACION),
         "puede_ver_solicitudes": bool(asignados & ROLES_SOLICITUD_COTIZACION),
         "puede_solicitar_cotizacion": Rol.RESPONSABLE_TECNICO in asignados,
         "puede_editar_catalogo": bool(asignados & ROLES_EDICION_CATALOGO),
