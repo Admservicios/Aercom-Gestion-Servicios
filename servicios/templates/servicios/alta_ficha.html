@@ -1,0 +1,6 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+{% if cliente_destino %}<p><a href="{% url 'cliente' cliente_destino.pk %}">Volver a {{ cliente_destino.nombre }}</a></p>{% endif %}
+<h1>{{ titulo }}</h1>
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>{{ texto_boton|default:"Guardar ficha" }}</button></form></article>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "servicios/base.html" %}
+{% block navegacion %}{% endblock %}
+{% block contenido %}
+<h1>Menú de Oficina</h1>
+<nav class="modulos-oficina" aria-label="Módulos">
+  <a href="{% url 'tickets' %}">Tickets</a>
+  <a href="{% url 'clientes' %}">Clientes</a>
+  <a href="{% url 'equipos' %}">Equipos</a>
+  {% if puede_ver_solicitudes %}<a href="{% url 'solicitudes_cotizacion' %}">Solicitudes de cotización</a>{% endif %}
+  <a href="{% url 'alertas' %}">Alertas de campo</a>
+</nav>
+{% endblock %}

@@ -1,15 +1,39 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<p><a href="{% url 'inicio' %}">Volver a tickets</a></p>
+<p><a href="{% url 'tickets' %}">Volver a tickets</a></p>
 <p class="contexto">Ticket T-{{ ticket.pk }} · Abierto</p>
 <h1>{{ ticket.asunto }}</h1>
+{% if ticket.cliente_ficha_id %}
+<p>
+  <a href="{% url 'cliente' ticket.cliente_ficha_id %}">{{ ticket.cliente_nombre }}</a>
+  · {{ ticket.cliente_ficha.get_tipo_display }}
+  {% if ticket.planta_ficha_id %} · <a href="{% url 'planta' ticket.planta_ficha_id %}">{{ ticket.planta_ficha.nombre }}</a>{% elif ticket.planta %} · {{ ticket.planta }} (original){% endif %}
+  {% if ticket.equipo_ficha_id %} · <a href="{% url 'equipo' ticket.equipo_ficha_id %}">{{ ticket.equipo_nombre }}</a>{% elif ticket.equipo %} · {{ ticket.equipo }} (original){% endif %}
+</p>
+{% else %}
 <p>{{ ticket.cliente }}{% if ticket.planta %} · {{ ticket.planta }}{% endif %}{% if ticket.equipo %} · {{ ticket.equipo }}{% endif %}</p>
+{% endif %}
+<p><a href="{% url 'vincular_ticket' ticket.pk %}">{% if ticket.cliente_ficha_id %}Editar vínculos{% else %}Vincular con fichas{% endif %}</a></p>
 {% if ticket.origen %}<p>Origen: {{ ticket.origen }}</p>{% endif %}
 {% if ticket.detalle %}{{ ticket.detalle|linebreaks }}{% endif %}
 <p>Creado por {{ ticket.creado_por }} · {{ ticket.creado_el|date:"d/m/Y H:i" }}</p>
+{% if puede_ver_solicitudes %}
+<article>
+<h2>Solicitudes de cotización</h2>
+{% if puede_solicitar_cotizacion %}
+  {% if ticket.cliente_ficha_id %}<p><a href="{% url 'nueva_solicitud_cotizacion' ticket.pk %}">Nueva solicitud de cotización</a></p>
+  {% else %}<p>Vinculá el ticket con un cliente para iniciar una solicitud.</p>{% endif %}
+{% endif %}
+<ul>
+  {% for solicitud in solicitudes_cotizacion %}
+  <li><a href="{% url 'solicitud_cotizacion' solicitud.pk %}">SC-{{ solicitud.pk }}</a> · {{ solicitud.get_estado_display }}</li>
+  {% empty %}<li>Sin solicitudes para mostrar.</li>{% endfor %}
+</ul>
+</article>
+{% endif %}
 <h2>Acciones</h2>
 {% for accion in acciones %}
-<article>
+<article id="accion-{{ accion.pk }}">
 <div class="cabecera"><h3>{{ accion.titulo }}</h3>
 {% if accion.realizada_el %}<strong class="estado hecha">Realizada</strong>{% else %}<strong class="estado pendiente">{{ accion.get_estado_display }}</strong>{% endif %}</div>
 {{ accion.detalle|linebreaks }}

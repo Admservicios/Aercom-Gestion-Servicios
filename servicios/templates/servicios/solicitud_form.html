@@ -1,0 +1,30 @@
+{% extends "servicios/base.html" %}
+{% load static %}
+{% block contenido %}
+<p><a href="{% url 'ticket' solicitud.ticket_id %}">Volver al ticket T-{{ solicitud.ticket_id }}</a></p>
+<h1>{% if es_nueva %}Nueva solicitud de cotización{% else %}Completar solicitud SC-{{ solicitud.pk }}{% endif %}</h1>
+<p>{{ solicitud.ticket.cliente_nombre }}{% if solicitud.ticket.planta_ficha %} · {{ solicitud.ticket.planta_ficha.nombre }}{% endif %} · {{ solicitud.ticket.asunto }}</p>
+{% if not es_nueva %}
+{% with cambio=solicitud.cambios.first %}
+{% if cambio.nota %}<p><strong>Qué falta:</strong> {{ cambio.nota }}</p>{% endif %}
+{% endwith %}
+{% endif %}
+<article>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <h2>Repuestos e insumos</h2>
+    {{ repuestos.management_form }}
+    {{ repuestos.non_form_errors }}
+    <div id="repuestos">
+      {% for renglon in repuestos %}
+      <fieldset><legend>Repuesto {{ forloop.counter }}</legend>{{ renglon.as_p }}</fieldset>
+      {% endfor %}
+    </div>
+    <template id="repuesto-vacio"><fieldset><legend>Repuesto</legend>{{ repuestos.empty_form.as_p }}</fieldset></template>
+    <p><button id="agregar-repuesto" type="button">Agregar repuesto</button></p>
+    <button>{% if es_nueva %}Enviar a revisión{% else %}Reenviar solicitud{% endif %}</button>
+  </form>
+</article>
+<script src="{% static 'repuestos-solicitud.js' %}" defer></script>
+{% endblock %}

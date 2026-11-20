@@ -1,20 +1,16 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import F, Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from .forms import TicketForm, VinculoTicketForm
 from .models import Accion, CambioAccion, Ticket
-
-
-class TicketForm(forms.ModelForm):
-    class Meta:
-        model = Ticket
-        fields = ("asunto", "detalle", "origen", "cliente", "planta", "equipo")
+from .permisos import ROLES_SERVICIOS, es_oficina, oficina_requerida, servicios_requeridos
+from .solicitudes import solicitudes_visibles
 
 
 class ResponsableField(forms.ModelChoiceField):
@@ -24,7 +20,9 @@ class ResponsableField(forms.ModelChoiceField):
 
 class AccionForm(forms.ModelForm):
     responsable = ResponsableField(
-        queryset=get_user_model().objects.filter(is_active=True).order_by("first_name")
+        queryset=get_user_model().objects.filter(
+            is_active=True, groups__name__in=ROLES_SERVICIOS,
+        ).order_by("first_name", "username").distinct()
     )
 
     class Meta:
@@ -47,17 +45,10 @@ class EstadoForm(forms.Form):
         return datos
 
 
-def es_oficina(user):
-    return user.groups.filter(name="Oficina").exists()
-
-
-def verificar_oficina(user):
-    if not es_oficina(user):
-        raise PermissionDenied
-
-
 def ver_campo(request, formulario=None, accion_id=None):
-    acciones = Accion.objects.filter(responsable=request.user).select_related("ticket").order_by(
+    acciones = Accion.objects.filter(responsable=request.user).select_related(
+        "ticket__cliente_ficha", "ticket__equipo_ficha",
+    ).order_by(
         F("realizada_el").asc(nulls_first=True), "-asignada_el",
     )
     return render(request, "servicios/campo.html", {
@@ -65,14 +56,25 @@ def ver_campo(request, formulario=None, accion_id=None):
     })
 
 
-@login_required
+@servicios_requeridos
 def inicio(request):
     if not es_oficina(request.user):
         return ver_campo(request)
+    if "q" in request.GET or "responsable" in request.GET:
+        return redirect(f"{reverse('tickets')}?{request.GET.urlencode()}")
+    return render(request, "servicios/menu_oficina.html")
+
+
+@oficina_requerida
+def tickets(request):
     consulta = request.GET.get("q", "").strip()
-    tickets = Ticket.objects.order_by("-pk")
+    tickets = Ticket.objects.select_related("cliente_ficha").order_by("-pk")
     if consulta:
-        filtro = Q(asunto__icontains=consulta) | Q(cliente__icontains=consulta) | Q(equipo__icontains=consulta)
+        filtro = (
+            Q(asunto__icontains=consulta) | Q(cliente__icontains=consulta) | Q(equipo__icontains=consulta)
+            | Q(cliente_ficha__nombre__icontains=consulta) | Q(cliente_ficha__codigo__icontains=consulta)
+            | Q(equipo_ficha__nombre__icontains=consulta) | Q(equipo_ficha__codigo__icontains=consulta)
+        )
         numero = consulta.upper().removeprefix("T-")
         if numero.isascii() and numero.isdecimal() and len(numero) <= 18:
             filtro |= Q(pk=int(numero))
@@ -90,10 +92,12 @@ def inicio(request):
     })
 
 
-@login_required
+@oficina_requerida
 def nuevo(request):
-    verificar_oficina(request.user)
-    form = TicketForm(request.POST if request.method == "POST" else None)
+    form = TicketForm(
+        request.POST if request.method == "POST" else None,
+        initial={campo: request.GET.get(campo) for campo in VinculoTicketForm.Meta.fields},
+    )
     if form.is_bound and form.is_valid():
         registro = form.save(commit=False)
         registro.creado_por = request.user
@@ -102,26 +106,41 @@ def nuevo(request):
     return render(request, "servicios/nuevo.html", {"form": form})
 
 
+@oficina_requerida
+@transaction.atomic
+def vincular_ticket(request, pk):
+    registros = Ticket.objects.select_for_update() if request.method == "POST" else Ticket.objects
+    registro = get_object_or_404(registros, pk=pk)
+    cliente_anterior = registro.cliente_ficha_id
+    form = VinculoTicketForm(request.POST if request.method == "POST" else None, instance=registro)
+    if form.is_bound and form.is_valid():
+        if registro.cliente_ficha_id != cliente_anterior and registro.solicitudes_cotizacion.exists():
+            form.add_error("cliente_ficha", "El ticket tiene solicitudes de cotización asociadas. Conservá su cliente.")
+        else:
+            form.instance.save(update_fields=VinculoTicketForm.Meta.fields)
+            return redirect("ticket", pk=pk)
+    return render(request, "servicios/vincular_ticket.html", {"ticket": registro, "form": form})
+
+
 def ver_ticket(request, registro, form, estado_form=None, accion_id=None):
     acciones = registro.acciones.select_related("responsable", "asignada_por", "realizada_por").prefetch_related(
         Prefetch("cambios", queryset=CambioAccion.objects.select_related("autor")),
     ).order_by("pk")
     return render(request, "servicios/ticket.html", {
         "ticket": registro, "acciones": acciones, "form": form,
+        "solicitudes_cotizacion": solicitudes_visibles(request.user).filter(ticket=registro),
         "estado_form": estado_form or EstadoForm(auto_id=False), "accion_id": accion_id,
     })
 
 
-@login_required
+@oficina_requerida
 def ticket(request, pk):
-    verificar_oficina(request.user)
     return ver_ticket(request, get_object_or_404(Ticket, pk=pk), AccionForm())
 
 
-@login_required
+@oficina_requerida
 @require_POST
 def agregar(request, pk):
-    verificar_oficina(request.user)
     registro = get_object_or_404(Ticket, pk=pk)
     form = AccionForm(request.POST)
     if form.is_valid():
@@ -139,7 +158,7 @@ def volver_a_accion(request, accion):
     return redirect("inicio")
 
 
-@login_required
+@servicios_requeridos
 @require_POST
 @transaction.atomic
 def realizar(request, pk):
@@ -152,7 +171,7 @@ def realizar(request, pk):
     return volver_a_accion(request, accion)
 
 
-@login_required
+@servicios_requeridos
 @require_POST
 @transaction.atomic
 def cambiar_estado(request, pk):

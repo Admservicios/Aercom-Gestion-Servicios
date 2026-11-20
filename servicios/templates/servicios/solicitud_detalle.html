@@ -1,0 +1,54 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'solicitudes_cotizacion' %}">Volver a solicitudes</a></p>
+<p class="contexto">SC-{{ solicitud.pk }} · {{ solicitud.get_estado_display }}</p>
+<h1>{{ solicitud.ticket.asunto }}</h1>
+<p>{{ solicitud.ticket.cliente_nombre }}{% if solicitud.ticket.planta_ficha %} · {{ solicitud.ticket.planta_ficha.nombre }}{% endif %} · <a href="{% url 'ticket' solicitud.ticket_id %}">Ticket T-{{ solicitud.ticket_id }}</a></p>
+{% if puede_reenviar %}<p><a class="boton" href="{% url 'reenviar_solicitud_cotizacion' solicitud.pk %}">Completar y reenviar</a></p>{% endif %}
+<article>
+  <h2>Análisis técnico</h2>
+  {{ solicitud.memoria|linebreaks }}
+  {% if solicitud.ticket.origen %}<p>Origen del ticket: {{ solicitud.ticket.origen }}</p>{% endif %}
+  {% if solicitud.referencia_origen %}<p>Referencia de origen: {{ solicitud.referencia_origen }}</p>{% endif %}
+  {% if solicitud.prioridad %}<p>Prioridad o indicación: {{ solicitud.prioridad }}</p>{% endif %}
+  {% with equipos=solicitud.equipos.all %}
+  {% if equipos %}
+  <h3>Equipos alcanzados</h3>
+  <ul>{% for equipo in equipos %}<li><a href="{% url 'equipo' equipo.pk %}">{{ equipo.nombre }}</a> · {{ equipo.codigo }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% endwith %}
+  <h3>Mano de obra</h3>
+  {% if solicitud.cantidad_tecnicos %}
+  <p>{{ solicitud.cantidad_tecnicos }} técnicos · {{ solicitud.horas_por_tecnico }} h por técnico · {{ solicitud.horas_totales }} h totales</p>
+  {% else %}<p>Sin mano de obra estimada.</p>{% endif %}
+  {% if solicitud.duracion_estimada %}<p>Duración de la intervención: {{ solicitud.duracion_estimada }} h</p>{% endif %}
+  <h3>Repuestos e insumos</h3>
+  <ul>
+    {% for repuesto in solicitud.repuestos.all %}
+    <li>{{ repuesto.descripcion }}{% if repuesto.referencia %} · {{ repuesto.referencia }}{% endif %} · {{ repuesto.cantidad }} {% if repuesto.por_equipo %}por equipo{% else %}en total{% endif %}</li>
+    {% empty %}<li>Sin repuestos registrados.</li>{% endfor %}
+  </ul>
+  {% if solicitud.adicionales %}<h3>Adicionales</h3>{{ solicitud.adicionales|linebreaks }}{% endif %}
+</article>
+<article>
+  <h2>Historial</h2>
+  <ul>
+    {% for cambio in solicitud.cambios.all %}
+    <li>{{ cambio.get_estado_display }} · {{ cambio.autor.get_full_name|default:cambio.autor.username }} · {{ cambio.fecha|date:"d/m/Y H:i" }}{% if cambio.nota %} · {{ cambio.nota }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+</article>
+{% if error_estado %}<p role="alert">{{ error_estado }}</p>{% endif %}
+{% if puede_revisar %}
+<article>
+  <h2>Revisar solicitud</h2>
+  <form method="post" action="{% url 'revisar_solicitud_cotizacion' solicitud.pk %}">
+    {% csrf_token %}
+    {{ revision_form.decision.errors }}
+    <p>{{ revision_form.nota.label_tag }} {{ revision_form.nota }} {{ revision_form.nota.errors }}</p>
+    <button name="decision" value="devuelta">Devolver para completar</button>
+    <button name="decision" value="lista">Marcar lista para cotizar</button>
+  </form>
+</article>
+{% endif %}
+{% endblock %}

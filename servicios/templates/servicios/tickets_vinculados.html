@@ -1,0 +1,8 @@
+<article>
+  <h2>Tickets vinculados</h2>
+  <ul>
+    {% for ticket in tickets %}
+    <li><a href="{% url 'ticket' ticket.pk %}">T-{{ ticket.pk }} · {{ ticket.asunto }}</a></li>
+    {% empty %}<li>Sin tickets vinculados.</li>{% endfor %}
+  </ul>
+</article>

@@ -1,0 +1,17 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'cliente' planta.cliente_id %}">{{ planta.cliente.nombre }}</a></p>
+<h1>{{ planta.nombre }}</h1>
+<p><a class="boton" href="{% url 'nuevo' %}?cliente_ficha={{ planta.cliente_id }}&amp;planta_ficha={{ planta.pk }}">Nuevo ticket</a></p>
+<p>Código: {{ planta.codigo }}</p>
+{% if planta.direccion %}<p>Dirección: {{ planta.direccion }}</p>{% endif %}
+<article>
+  <h2>Equipos</h2>
+  <ul>
+    {% for equipo in equipos %}
+    <li><a href="{% url 'equipo' equipo.pk %}">{{ equipo.nombre }} ({{ equipo.codigo }})</a></li>
+    {% empty %}<li>Sin equipos registrados en esta planta.</li>{% endfor %}
+  </ul>
+</article>
+{% include "servicios/tickets_vinculados.html" %}
+{% endblock %}

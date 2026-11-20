@@ -1,0 +1,55 @@
+services:
+  app:
+    restart: unless-stopped
+    image: aercom-servicios:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      DJANGO_SETTINGS_MODULE: servicios.settings_alojamiento
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Configurar DJANGO_SECRET_KEY}
+      AERCOM_HOST: ${AERCOM_HOST:?Configurar AERCOM_HOST}
+      POSTGRES_HOST: db
+      POSTGRES_DB: aercom
+      POSTGRES_USER: aercom
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configurar POSTGRES_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - staticfiles:/app/staticfiles
+  db:
+    restart: unless-stopped
+    image: postgres:16
+    environment:
+      POSTGRES_DB: aercom
+      POSTGRES_USER: aercom
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configurar POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "aercom", "-d", "aercom"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres:/var/lib/postgresql/data
+  proxy:
+    restart: unless-stopped
+    image: caddy:2-alpine
+    environment:
+      AERCOM_HOST: ${AERCOM_HOST:?Configurar AERCOM_HOST}
+      NO_PROXY: app,localhost,127.0.0.1
+    depends_on:
+      - app
+    ports:
+      - "${AERCOM_BIND_IP:?Configurar AERCOM_BIND_IP}:${AERCOM_HTTP_PORT:-80}:80"
+      - "${AERCOM_BIND_IP:?Configurar AERCOM_BIND_IP}:${AERCOM_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - staticfiles:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  postgres:
+  staticfiles:
+  caddy_data:
+  caddy_config:
