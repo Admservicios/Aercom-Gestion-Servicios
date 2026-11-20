@@ -52,6 +52,13 @@
   {% include "servicios/facturacion_trabajos_vinculados.html" %}
 </article>
 {% endif %}
+{% if puede_facturar_abonos and ticket.cliente_ficha_id %}
+<article>
+  <h2>Llamadas de servicio SAP</h2>
+  {% if puede_registrar_cierre_sap %}<p><a href="{% url 'llamada_sap_ticket' ticket.pk %}">Vincular llamada SAP</a></p>{% endif %}
+  {% include "servicios/llamadas_sap_vinculadas.html" with llamadas=ticket.llamadas_sap.all %}
+</article>
+{% endif %}
 <h2>Acciones</h2>
 {% for accion in acciones %}
 <article id="accion-{{ accion.pk }}">

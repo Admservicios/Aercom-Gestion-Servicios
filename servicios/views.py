@@ -127,8 +127,9 @@ def vincular_ticket(request, pk):
         elif registro.cliente_ficha_id != cliente_anterior and (
             registro.solicitudes_cotizacion.exists() or registro.cotizaciones.exists()
             or registro.pedidos_servicio.exists() or registro.solicitudes_facturacion.exists()
+            or registro.llamadas_sap.exists()
         ):
-            form.add_error("cliente_ficha", "El ticket tiene solicitudes, cotizaciones o pedidos asociados. Conservá su cliente.")
+            form.add_error("cliente_ficha", "El ticket tiene registros asociados. Conservá su cliente.")
         else:
             form.instance.save(update_fields=VinculoTicketForm.Meta.fields)
             return redirect("ticket", pk=pk)

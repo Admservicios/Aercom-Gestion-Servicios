@@ -86,6 +86,13 @@ class RegistroFacturacionForm(DatosFacturacionForm):
                     self.fields[campo].required = True
 
 
+    def clean_fecha_factura(self):
+        fecha = self.cleaned_data["fecha_factura"]
+        if fecha and self.instance.llamadas_sap.filter(cerrada_en_sap__lt=fecha).exists():
+            raise forms.ValidationError("La fecha de emisión no puede quedar después de un cierre SAP ya registrado.")
+        return fecha
+
+
 def solicitudes_facturacion_visibles(usuario):
     registros = SolicitudFacturacionTrabajo.objects.all()
     return registros if roles(usuario) & ROLES_FACTURACION else registros.filter(solicitante=usuario)

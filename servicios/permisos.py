@@ -68,6 +68,7 @@ def menu_por_rol(request):
         "puede_gestionar_cotizaciones": bool(asignados & ROLES_REVISION_COTIZACION),
         "puede_ver_solicitudes": bool(asignados & ROLES_SOLICITUD_COTIZACION),
         "puede_solicitar_cotizacion": Rol.RESPONSABLE_TECNICO in asignados,
+        "puede_registrar_cierre_sap": Rol.ADMINISTRACION in asignados,
         "puede_facturar_abonos": bool(asignados & ROLES_FACTURACION),
         "puede_editar_agenda": bool(asignados & ROLES_EDICION_AGENDA),
         "puede_editar_catalogo": bool(asignados & ROLES_EDICION_CATALOGO),

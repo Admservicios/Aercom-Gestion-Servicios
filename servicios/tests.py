@@ -11,6 +11,7 @@ from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Cotizacion, Equ
 from .models import RespuestaPrecio, SolicitudCotizacion, SolicitudPrecio
 from .models import FacturacionMensualAbono, PedidoServicio, Visita
 from .models import ResultadoTrabajoVisita, SolicitudFacturacionTrabajo
+from .models import LlamadaServicioSAP
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -1160,3 +1161,81 @@ class FacturacionTrabajoTest(TestCase):
         self.client.force_login(otro)
         self.assertEqual(self.client.get(reverse("facturacion_trabajo", args=[solicitud.pk])).status_code, 404)
         self.assertNotContains(self.client.get(reverse("facturacion_trabajos")), "Revisión ficticia")
+
+
+class CierreAdministrativoTest(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("administracion.cierre")
+        self.admin.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.responsable = User.objects.create_user("responsable.cierre")
+        self.responsable.groups.add(Group.objects.create(name=Rol.RESPONSABLE))
+        self.client.force_login(self.admin)
+        self.cliente = Cliente.objects.create(codigo="AB-63", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.ticket = Ticket.objects.create(asunto="Reparación ficticia", cliente_ficha=self.cliente, creado_por=self.admin)
+        self.accion = self.ticket.acciones.create(titulo="Reparación pendiente", responsable=self.responsable)
+        self.solicitud = self.ticket.solicitudes_facturacion.create(solicitante=self.admin, modalidad="previa", cobranza_aplica=True)
+        self.solicitud.trabajos.add(self.accion)
+        self.hoy = timezone.localdate()
+        self.fecha_factura = self.hoy - timedelta(days=1)
+        self.alta = reverse("llamada_sap_facturacion", args=[self.solicitud.pk])
+        self.datos = {"referencia": " ns-ficticia-63 ", "circuito": "puntual", "facturaciones": [self.solicitud.pk]}
+
+    def test_cierre_puntual_despues_de_facturar_conserva_ejecucion_y_cobranza(self):
+        respuesta = self.client.post(self.alta, self.datos)
+        llamada = LlamadaServicioSAP.objects.get()
+        detalle = reverse("llamada_sap", args=[llamada.pk])
+        cerrar = reverse("cerrar_llamada_sap", args=[llamada.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertEqual(llamada.referencia, "NS-FICTICIA-63")
+        cierre = {"fecha": self.fecha_factura.isoformat(), "confirmado": "on"}
+        self.assertContains(self.client.post(cerrar, cierre), "Registrá las facturas en SAP")
+        self.solicitud.factura_sap = "FACTURA-FICTICIA-63"
+        self.solicitud.fecha_factura = self.fecha_factura
+        self.solicitud.actualizar_estado()
+        self.solicitud.save()
+        self.assertContains(self.client.get(detalle), f'value="{self.hoy.isoformat()}"')
+        anterior = (self.fecha_factura - timedelta(days=1)).isoformat()
+        self.assertContains(self.client.post(cerrar, {**cierre, "fecha": anterior}), "El cierre no puede ser anterior")
+        self.assertRedirects(self.client.post(cerrar, cierre), detalle)
+        self.assertRedirects(self.client.post(cerrar, {**cierre, "fecha": self.hoy.isoformat()}), detalle)
+        llamada.refresh_from_db()
+        self.assertEqual(llamada.cerrada_en_sap, self.fecha_factura)
+        self.assertEqual(llamada.cierre_registrado_por, self.admin)
+        self.assertIn("FACTURA-FICTICIA-63", llamada.respaldo_facturas)
+        editar = reverse("actualizar_facturacion_trabajo", args=[self.solicitud.pk])
+        movimiento = self.solicitud.movimientos.create(autor=self.admin, estado=self.solicitud.estado)
+        respuesta = self.client.post(editar, {
+            "version": str(movimiento.pk), "factura_sap": self.solicitud.factura_sap,
+            "fecha_factura": self.hoy.isoformat(), "cobranza_aplica": "on",
+        })
+        self.assertContains(respuesta, "La fecha de emisión no puede quedar después")
+        self.accion.refresh_from_db()
+        self.assertIsNone(self.accion.realizada_el)
+        for texto in ("Cerrada en SAP", "Pendiente de cobro", "Reparación pendiente"):
+            self.assertContains(self.client.get(detalle), texto)
+        self.assertContains(self.client.get(reverse("facturacion_trabajo", args=[self.solicitud.pk])), detalle)
+
+    def test_visita_del_abono_registra_referencia_y_mantiene_pendientes(self):
+        visita = Visita.objects.create(cliente=self.cliente, fecha=self.hoy, hora_desde="09:00", hora_hasta="10:00")
+        visita.trabajos.add(self.accion)
+        url = reverse("llamada_sap_ticket", args=[self.ticket.pk])
+        respuesta = self.client.post(url, {"circuito": "abono", "referencia": "NS-ABONO", "visita": visita.pk})
+        llamada = LlamadaServicioSAP.objects.get()
+        detalle = reverse("llamada_sap", args=[llamada.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertContains(self.client.get(detalle), "Resultados de la visita")
+        self.assertContains(self.client.get(detalle), "Regla de cierre de visitas de abono pendiente de confirmar")
+        cerrar = reverse("cerrar_llamada_sap", args=[llamada.pk])
+        self.assertContains(self.client.post(cerrar, {"fecha": self.hoy.isoformat(), "confirmado": "on"}), "pendiente de confirmar")
+        llamada.refresh_from_db()
+        self.assertIsNone(llamada.cerrada_en_sap)
+
+    def test_referencia_unica_y_solo_administracion_registra_cierre(self):
+        self.client.post(self.alta, self.datos)
+        llamada = LlamadaServicioSAP.objects.get()
+        self.assertContains(self.client.post(self.alta, self.datos), "La llamada ya está registrada")
+        self.assertEqual(LlamadaServicioSAP.objects.count(), 1)
+        self.client.force_login(self.responsable)
+        self.assertContains(self.client.get(reverse("cierre_administrativo")), llamada.referencia)
+        self.assertEqual(self.client.post(reverse("cerrar_llamada_sap", args=[llamada.pk])).status_code, 403)
+        self.assertEqual(self.client.post(self.alta, self.datos).status_code, 403)

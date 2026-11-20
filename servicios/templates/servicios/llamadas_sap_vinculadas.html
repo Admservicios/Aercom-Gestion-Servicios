@@ -1,0 +1,4 @@
+<ul>{% for llamada in llamadas %}
+  <li><a href="{% url 'llamada_sap' llamada.pk %}">{{ llamada.referencia }}</a>
+    · {% if llamada.cerrada_en_sap %}Cerrada en SAP el {{ llamada.cerrada_en_sap|date:"d/m/Y" }}{% else %}Sin cierre registrado{% endif %}</li>
+{% empty %}<li>Sin llamadas de servicio vinculadas.</li>{% endfor %}</ul>

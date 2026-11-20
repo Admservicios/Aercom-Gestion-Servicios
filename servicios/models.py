@@ -758,3 +758,32 @@ class MovimientoFacturacionTrabajo(models.Model):
 
     class Meta:
         ordering = ("-pk",)
+
+
+class LlamadaServicioSAP(models.Model):
+    class Circuito(models.TextChoices):
+        PUNTUAL = "puntual", "Trabajo facturado por separado"
+        ABONO = "abono", "Visita de abono"
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="llamadas_sap")
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="llamadas_sap")
+    visita = models.ForeignKey(Visita, on_delete=models.PROTECT, blank=True, null=True, related_name="llamadas_sap")
+    facturaciones = models.ManyToManyField(SolicitudFacturacionTrabajo, blank=True, related_name="llamadas_sap")
+    referencia = models.CharField("Número o referencia de llamada en SAP", max_length=100)
+    circuito = models.CharField(max_length=10, choices=Circuito)
+    observaciones = models.TextField(blank=True)
+    registrada_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    registrada_el = models.DateTimeField(auto_now_add=True)
+    cerrada_en_sap = models.DateField("Fecha efectiva del cierre en SAP", blank=True, null=True)
+    cierre_registrado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, blank=True, null=True, related_name="+",
+    )
+    cierre_registrado_el = models.DateTimeField(blank=True, null=True)
+    observacion_cierre = models.TextField("Observación del cierre", blank=True)
+    respaldo_facturas = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("-pk",)
+        constraints = [
+            models.UniqueConstraint(fields=("cliente", "referencia"), name="llamada_sap_unica_por_cliente"),
+        ]

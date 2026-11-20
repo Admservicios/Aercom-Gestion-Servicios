@@ -9,7 +9,10 @@
   <a href="{% url 'pedidos_servicio' %}">Pedidos de servicio</a>
   <a href="{% url 'agenda' %}">Agenda</a>
   <a href="{% url 'facturacion_trabajos' %}">Facturación de trabajos</a>
-  {% if puede_facturar_abonos %}<a href="{% url 'facturacion_abonos' %}">Facturación mensual de abonos</a>{% endif %}
+  {% if puede_facturar_abonos %}
+  <a href="{% url 'facturacion_abonos' %}">Facturación mensual de abonos</a>
+  <a href="{% url 'cierre_administrativo' %}">Cierre administrativo</a>
+  {% endif %}
   <a href="{% url 'servicios_tecnicos' %}">Servicios de técnicos</a>
   <a href="{% url 'cotizaciones_terceros' %}">Cotizaciones de terceros</a>
   {% if puede_gestionar_cotizaciones %}<a href="{% url 'solicitudes_precio' %}">Solicitudes de precios</a>{% endif %}

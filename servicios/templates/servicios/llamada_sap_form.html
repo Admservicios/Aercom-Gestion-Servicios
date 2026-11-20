@@ -1,0 +1,10 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'ticket' ticket.pk %}">Volver al ticket T-{{ ticket.pk }}</a></p>
+<h1>Vincular llamada SAP</h1>
+<p>{{ ticket.cliente_nombre }} · {{ ticket.asunto }}</p>
+{% if referencias_campo %}
+<p>Referencias informadas en Campo: {{ referencias_campo|join:", " }}.</p>
+{% endif %}
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Guardar llamada</button></form></article>
+{% endblock %}
