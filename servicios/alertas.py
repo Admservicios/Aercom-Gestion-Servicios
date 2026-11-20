@@ -1,9 +1,11 @@
 from django import forms
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.shortcuts import redirect, render
 
 from .models import Accion, AlertaCampo
 from .permisos import campo_requerido, es_oficina, servicios_requeridos
+from .recordatorios import avisar_novedad_campo
 
 
 class AlertaCampoForm(forms.ModelForm):
@@ -22,7 +24,7 @@ class AlertaCampoForm(forms.ModelForm):
 @servicios_requeridos
 def alertas(request):
     oficina = es_oficina(request.user)
-    registros = AlertaCampo.objects.select_related("autor", "accion")
+    registros = AlertaCampo.objects.select_related("autor", "accion", "aviso")
     if not oficina:
         registros = registros.filter(autor=request.user)
     return render(request, "servicios/alertas.html", {
@@ -31,12 +33,14 @@ def alertas(request):
 
 
 @campo_requerido
+@transaction.atomic
 def nueva_alerta(request):
     form = AlertaCampoForm(request.user, request.POST if request.method == "POST" else None)
     if form.is_valid():
         registro = form.save(commit=False)
         registro.autor = request.user
         registro.save()
+        avisar_novedad_campo(registro)
         return redirect("alertas")
     return render(request, "servicios/alta_ficha.html", {
         "form": form, "titulo": "Reportar alerta", "texto_boton": "Registrar alerta",

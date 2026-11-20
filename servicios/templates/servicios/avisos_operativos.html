@@ -1,0 +1,13 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>Mis avisos</h1>
+{% for recepcion in pagina %}
+<article>
+  <h2><a href="{% url 'aviso_operativo' recepcion.aviso_id %}">{{ recepcion.aviso.titulo }}</a></h2>
+  <p>{% if recepcion.aviso.resuelto_el %}Resuelto{% elif recepcion.aviso.atendido_por_id %}En atención{% else %}Pendiente de atención{% endif %}
+    · {% if recepcion.visto_el %}Visto{% else %}Sin ver{% endif %}</p>
+  {% if recepcion.aviso.alerta_campo_id %}<p>{{ recepcion.aviso.alerta_campo.detalle|truncatechars:160 }}</p>{% endif %}
+</article>
+{% empty %}<p>Sin avisos disponibles.</p>{% endfor %}
+{% include "servicios/paginacion.html" %}
+{% endblock %}

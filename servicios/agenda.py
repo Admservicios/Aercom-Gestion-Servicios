@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from .models import Accion, Cliente, PedidoServicio, Ticket, Visita
+from .recordatorios import asociar_proximas_visitas
 from .permisos import ROLES_EDICION_AGENDA, Rol, oficina_requerida, requiere_roles
 
 
@@ -169,6 +170,7 @@ def nueva(request, cliente_id=None, pedido_id=None):
             form.save()
             registrar_movimiento(visita, request.user)
             actualizar_pedidos(pedidos, request.user)
+            asociar_proximas_visitas(cliente.pk)
             return redirect("visita", pk=visita.pk)
     return render(request, "servicios/visita_form.html", {
         "form": form, "cliente": cliente, "titulo": "Registrar visita de Excel", "texto_boton": "Guardar visita",
@@ -188,6 +190,7 @@ def reprogramar(request, pk):
         visita.save(update_fields=campos_horario)
         registrar_movimiento(visita, request.user, form.cleaned_data["motivo"])
         actualizar_pedidos(pedidos, request.user)
+        asociar_proximas_visitas(visita.cliente_id)
         return redirect("visita", pk=pk)
     return render(request, "servicios/visita_form.html", {
         "form": form, "cliente": visita.cliente, "visita": visita,

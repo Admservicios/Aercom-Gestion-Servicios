@@ -75,6 +75,15 @@
   {% empty %}<li>Sin documentos vinculados.</li>{% endfor %}</ul>
 </article>
 {% endif %}
+{% if ticket.cliente_ficha_id %}
+<article>
+  <h2>Recordatorios</h2>
+  <p><a href="{% url 'recordatorio_ticket' ticket.pk %}">Crear recordatorio</a></p>
+  <ul>{% for recordatorio in ticket.recordatorios.all %}
+    <li><a href="{% url 'aviso_operativo' recordatorio.aviso.pk %}">{{ recordatorio.titulo }}</a></li>
+  {% empty %}<li>Sin recordatorios vinculados.</li>{% endfor %}</ul>
+</article>
+{% endif %}
 <h2>Acciones</h2>
 {% for accion in acciones %}
 <article id="accion-{{ accion.pk }}">

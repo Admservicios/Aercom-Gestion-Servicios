@@ -1,6 +1,6 @@
 from django.contrib.auth import views as auth
 from django.urls import path
-from . import abonos, agenda, alertas, campo_servicios, catalogo, cierres, cotizaciones, facturacion_abonos, facturacion_trabajos, mantenimiento, pedidos, precios, seguimiento, solicitudes, tiempos, views
+from . import abonos, agenda, alertas, campo_servicios, catalogo, cierres, cotizaciones, facturacion_abonos, facturacion_trabajos, mantenimiento, pedidos, precios, recordatorios, seguimiento, solicitudes, tiempos, views
 
 urlpatterns = [
     path("", views.inicio, name="inicio"),
@@ -29,6 +29,13 @@ urlpatterns = [
     path("tiempos-por-puesto/", tiempos.lista, name="tiempos_por_puesto"),
     path("acciones/<int:pk>/tiempos/", tiempos.detalle, name="tiempos_accion"),
     path("acciones/<int:pk>/derivar/", tiempos.derivar, name="derivar_accion"),
+    path("recordatorios/", recordatorios.lista, name="recordatorios"),
+    path("recordatorios/nuevo/", recordatorios.nuevo, name="nuevo_recordatorio"),
+    path("tickets/<int:ticket_id>/recordatorios/nuevo/", recordatorios.nuevo, name="recordatorio_ticket"),
+    path("avisos/", recordatorios.avisos, name="avisos_operativos"),
+    path("avisos/<int:pk>/", recordatorios.detalle, name="aviso_operativo"),
+    path("avisos/<int:pk>/destinatarios/", recordatorios.destinatarios, name="destinatarios_aviso"),
+    path("avisos/<int:pk>/gestionar/", recordatorios.gestionar, name="gestionar_aviso"),
     path("pendientes/", seguimiento.pendientes, name="pendientes"),
     path("tickets/<int:pk>/documentos/", seguimiento.documentos_ticket, name="documentos_ticket"),
     path("acciones/<int:pk>/proximo-paso/", seguimiento.proximo_paso, name="proximo_paso_accion"),

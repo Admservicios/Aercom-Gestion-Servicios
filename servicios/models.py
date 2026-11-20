@@ -842,3 +842,81 @@ class MovimientoTiempoAccion(models.Model):
     class Meta:
         ordering = ("ocurrio_el", "pk")
         indexes = [models.Index(fields=("accion", "ocurrio_el"), name="tiempo_accion_fecha")]
+
+
+class Recordatorio(models.Model):
+    class Tipo(models.TextChoices):
+        SEGUIMIENTO = "seguimiento", "Seguimiento"
+        VENCIMIENTO = "vencimiento", "Vencimiento"
+        DEMORA = "demora", "Demora"
+
+    class Disparador(models.TextChoices):
+        FECHA = "fecha", "Por fecha"
+        PROXIMA_VISITA = "proxima_visita", "En la próxima visita"
+
+    titulo = models.CharField("Título", max_length=160)
+    detalle = models.TextField(blank=True)
+    tipo = models.CharField(max_length=12, choices=Tipo, default=Tipo.SEGUIMIENTO)
+    disparador = models.CharField(max_length=14, choices=Disparador)
+    fecha = models.DateField(blank=True, null=True)
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, null=True, blank=True, related_name="recordatorios")
+    visita = models.ForeignKey(Visita, on_delete=models.PROTECT, null=True, blank=True, related_name="recordatorios")
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    creado_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(disparador="fecha", fecha__isnull=False, visita__isnull=True)
+                    | models.Q(disparador="proxima_visita", fecha__isnull=True, ticket__isnull=False)
+                ),
+                name="recordatorio_disparador_valido",
+            ),
+        ]
+
+    @property
+    def fecha_activacion(self):
+        return self.visita.fecha if self.visita_id else self.fecha
+
+
+class AvisoOperativo(models.Model):
+    recordatorio = models.OneToOneField(
+        Recordatorio, on_delete=models.PROTECT, blank=True, null=True, related_name="aviso",
+    )
+    alerta_campo = models.OneToOneField(
+        AlertaCampo, on_delete=models.PROTECT, blank=True, null=True, related_name="aviso",
+    )
+    atendido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, blank=True, null=True, related_name="+",
+    )
+    atendido_el = models.DateTimeField(blank=True, null=True)
+    resuelto_el = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ("-pk",)
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(recordatorio__isnull=False, alerta_campo__isnull=True)
+                | models.Q(recordatorio__isnull=True, alerta_campo__isnull=False),
+                name="aviso_origen_unico",
+            ),
+        ]
+
+    @property
+    def titulo(self):
+        return self.recordatorio.titulo if self.recordatorio_id else "Novedad de Campo"
+
+
+class RecepcionAviso(models.Model):
+    aviso = models.ForeignKey(AvisoOperativo, on_delete=models.CASCADE, related_name="recepciones")
+    destinatario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="avisos_recibidos")
+    activo = models.BooleanField(default=True)
+    visto_el = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("aviso", "destinatario"), name="aviso_destinatario_unico"),
+        ]

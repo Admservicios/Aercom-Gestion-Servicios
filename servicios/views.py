@@ -9,7 +9,7 @@ from django.views.decorators.http import require_POST
 from .campo_servicios import visitas_de_campo
 from .facturacion_trabajos import solicitudes_facturacion_visibles
 from .forms import TicketForm, VinculoTicketForm
-from .models import Accion, CambioAccion, CategoriaEspera, MovimientoTiempoAccion, PedidoServicio, Ticket, Visita
+from .models import Accion, CambioAccion, CategoriaEspera, MovimientoTiempoAccion, PedidoServicio, Recordatorio, Ticket, Visita
 from .permisos import Rol, es_oficina, oficina_requerida, roles, servicios_requeridos
 from .seguimiento import ResponsableField, responsables_disponibles, respuesta_accion_bloqueada
 from .solicitudes import solicitudes_visibles
@@ -127,12 +127,13 @@ def vincular_ticket(request, pk):
         if (registro.cliente_ficha_id, registro.planta_ficha_id) != (cliente_anterior, planta_anterior) and (
             registro.acciones.filter(visitas_agendadas__isnull=False).exists()
             or registro.pedidos_servicio.filter(visitas__isnull=False).exists()
+            or registro.recordatorios.filter(disparador=Recordatorio.Disparador.PROXIMA_VISITA).exists()
         ):
-            form.add_error("planta_ficha", "El ticket está vinculado a una visita. Conservá su cliente y planta.")
+            form.add_error("planta_ficha", "El ticket tiene visitas o recordatorios de próxima visita asociados. Conservá su cliente y planta.")
         elif registro.cliente_ficha_id != cliente_anterior and (
             registro.solicitudes_cotizacion.exists() or registro.cotizaciones.exists()
             or registro.pedidos_servicio.exists() or registro.solicitudes_facturacion.exists()
-            or registro.llamadas_sap.exists() or registro.documentos.exists()
+            or registro.llamadas_sap.exists() or registro.documentos.exists() or registro.recordatorios.exists()
         ):
             form.add_error("cliente_ficha", "El ticket tiene registros asociados. Conservá su cliente.")
         else:

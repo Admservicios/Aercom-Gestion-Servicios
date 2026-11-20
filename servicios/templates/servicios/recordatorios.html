@@ -1,0 +1,24 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>Recordatorios</h1>
+<p><a class="boton" href="{% url 'nuevo_recordatorio' %}">Crear recordatorio por fecha</a></p>
+<p>Para la próxima visita, creá el recordatorio desde el ticket correspondiente.</p>
+{% for recordatorio in pagina %}
+<article>
+  <h2><a href="{% url 'aviso_operativo' recordatorio.aviso.pk %}">{{ recordatorio.titulo }}</a></h2>
+  <p>{{ recordatorio.get_tipo_display }} · {{ recordatorio.responsable.get_full_name|default:recordatorio.responsable.username }}</p>
+  {% with fecha=recordatorio.fecha_activacion %}
+  <p>
+    {% if fecha %}{{ fecha|date:"d/m/Y" }}{% else %}A la espera de la próxima visita{% endif %}
+    {% if recordatorio.aviso.resuelto_el %} · Resuelto
+    {% elif recordatorio.aviso.atendido_por_id %} · En atención
+    {% elif fecha and fecha < hoy %} · Vencido
+    {% elif fecha == hoy %} · Para hoy
+    {% else %} · Pendiente{% endif %}
+  </p>
+  {% endwith %}
+  {% if recordatorio.ticket_id %}<p><a href="{% url 'ticket' recordatorio.ticket_id %}">T-{{ recordatorio.ticket_id }} · {{ recordatorio.ticket.asunto }}</a></p>{% endif %}
+</article>
+{% empty %}<p>Sin recordatorios registrados.</p>{% endfor %}
+{% include "servicios/paginacion.html" %}
+{% endblock %}
