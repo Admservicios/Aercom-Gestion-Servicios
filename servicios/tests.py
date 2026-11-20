@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Cotizacion, Equipo, Planta, RegistroMantenimiento, Ticket
 from .models import RespuestaPrecio, SolicitudCotizacion, SolicitudPrecio
-from .models import PedidoServicio, Visita
+from .models import FacturacionMensualAbono, PedidoServicio, Visita
 from .models import ResultadoTrabajoVisita
 from .permisos import ROLES_OFICINA, Rol
 
@@ -991,3 +991,79 @@ class ServiciosTecnicosTest(TestCase):
         self.client.force_login(self.otro)
         self.assertEqual(self.client.post(self.alta, {"estado": "realizado"}).status_code, 404)
         self.assertFalse(ResultadoTrabajoVisita.objects.exists())
+
+
+class FacturacionMensualAbonoTest(TestCase):
+    def setUp(self):
+        self.oficina = User.objects.create_user("oficina.facturacion")
+        self.oficina.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.client.force_login(self.oficina)
+        self.cliente = Cliente.objects.create(codigo="AB-61", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.tercero = Cliente.objects.create(codigo="TE-61", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        self.contrato = self.cliente.contratos_abono.create(
+            referencia="AB-61", vigente_desde=date(2020, 1, 1), alcance="Visita preventiva", frecuencia="Mensual",
+            cobertura_general=True, valor=Decimal("15000.50"), moneda="ARS", requiere_oc=True,
+            requiere_hes=True, portal="Portal ficticio", requisitos_administrativos="Solicitar hoja de servicio.",
+        )
+        self.alta = reverse("facturacion_abono_mes", args=["2026-11", self.cliente.pk])
+        self.datos = {
+            "estado": "pendiente", "importe": "16200.50", "moneda": "ars", "ajuste": "Ajuste de ejemplo",
+            "requiere_oc": "on", "requiere_hes": "on", "portal": "Portal ficticio", "modalidad": "Primer día hábil",
+        }
+
+    def test_control_mensual_precarga_y_conserva_historial_independiente(self):
+        form = self.client.get(self.alta).context["form"]
+        self.assertEqual(form["importe"].value(), Decimal("15000.50"))
+        self.assertTrue(form["requiere_oc"].value())
+        self.assertEqual(form["portal"].value(), "Portal ficticio")
+        self.assertRedirects(self.client.post(self.alta, self.datos), self.alta)
+        registro = self.cliente.facturacion_mensual.get()
+        self.assertEqual(registro.contrato, self.contrato)
+        self.assertEqual(registro.importe, Decimal("16200.50"))
+        listado = self.client.get(reverse("facturacion_abonos"), {"periodo": "2026-11"})
+        self.assertContains(listado, "OC pendiente")
+        self.assertContains(listado, "HES pendiente")
+        self.assertNotContains(listado, self.tercero.nombre)
+        self.assertEqual(self.client.post(self.alta, self.datos).status_code, 409)
+        otro_mes = reverse("facturacion_abono_mes", args=["2026-12", self.cliente.pk])
+        self.assertRedirects(self.client.post(otro_mes, {**self.datos, "importe": "18000"}), otro_mes)
+        registro.refresh_from_db()
+        self.assertEqual(registro.importe, Decimal("16200.50"))
+        self.assertContains(self.client.get(reverse("cliente", args=[self.cliente.pk])), "12/2026")
+        self.assertEqual(self.cliente.facturacion_mensual.count(), 2)
+
+    def test_factura_sap_y_respaldo_sin_cerrar_trabajos(self):
+        ticket = Ticket.objects.create(asunto="Trabajo abierto", cliente_ficha=self.cliente, creado_por=self.oficina)
+        accion = ticket.acciones.create(titulo="Revisar generador", responsable=self.oficina)
+        self.client.post(self.alta, self.datos)
+        registro = self.cliente.facturacion_mensual.get()
+        version = registro.actualizado_el.isoformat()
+        factura = {**self.datos, "version": version, "estado": "facturada"}
+        respuesta = self.client.post(self.alta, factura)
+        for campo in ("factura_sap", "fecha_factura"):
+            self.assertTrue(respuesta.context["form"].has_error(campo))
+        factura.update(factura_sap="SAP-FICTICIA-61", fecha_factura=timezone.localdate().isoformat(), orden_compra="OC-61")
+        self.assertRedirects(self.client.post(self.alta, factura), self.alta)
+        self.assertEqual(self.client.post(self.alta, factura).status_code, 409)
+        registro.refresh_from_db()
+        self.assertEqual(registro.estado, FacturacionMensualAbono.Estado.FACTURADA)
+        self.assertEqual(registro.factura_sap, "SAP-FICTICIA-61")
+        self.assertIsNone(accion.realizada_el)
+        ficha = self.client.get(reverse("cliente", args=[self.cliente.pk]))
+        self.assertContains(ficha, "SAP-FICTICIA-61")
+        self.assertContains(ficha, "Revisar generador")
+
+    def test_no_corresponde_con_motivo_y_permiso_por_rol(self):
+        mes_sin_contrato = reverse("facturacion_abono_mes", args=["2019-12", self.cliente.pk])
+        form = self.client.get(mes_sin_contrato).context["form"]
+        self.assertEqual(form["estado"].value(), "no_corresponde")
+        self.assertContains(self.client.post(mes_sin_contrato, self.datos), "Seleccioná un contrato")
+        self.assertRedirects(self.client.post(mes_sin_contrato, {
+            "estado": "no_corresponde", "observaciones": "Sin cobertura ese mes.",
+        }), mes_sin_contrato)
+        self.assertEqual(self.client.get(reverse("facturacion_abono_mes", args=["2026-11", self.tercero.pk])).status_code, 404)
+        comercial = User.objects.create_user("comercial.facturacion")
+        comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(comercial)
+        self.assertEqual(self.client.get(self.alta).status_code, 403)
+        self.assertNotContains(self.client.get(reverse("cliente", args=[self.cliente.pk])), "Facturación mensual del abono")

@@ -7,6 +7,16 @@
 {% if puede_editar_agenda %} · <a href="{% url 'visita_cliente' cliente.pk %}">Registrar visita de Excel</a>{% endif %}</p>
 {% if cliente.referencia_sap %}<p>Referencia SAP: {{ cliente.referencia_sap }}</p>{% endif %}
 {% if cliente.tipo == "abonado" %}
+{% if puede_facturar_abonos %}
+<article>
+  <h2>Facturación mensual del abono</h2>
+  <p><a href="{% url 'facturacion_abonos' %}?q={{ cliente.codigo|urlencode }}">Consultar facturación por período</a></p>
+  <ul>{% for control in facturacion_mensual %}
+    <li><a href="{% url 'facturacion_abono_mes' control.periodo|date:'Y-m' cliente.pk %}">{{ control.periodo|date:"m/Y" }}</a> · {{ control.get_estado_display }}
+      {% if control.factura_sap %} · SAP {{ control.factura_sap }}{% endif %}</li>
+  {% empty %}<li>Sin períodos registrados.</li>{% endfor %}</ul>
+</article>
+{% endif %}
 <article id="contratos">
   <h2>Contratos de abono</h2>
   {% if puede_editar_catalogo %}<p><a href="{% url 'nuevo_contrato_abono' cliente.pk %}">Nuevo contrato de abono</a></p>{% endif %}

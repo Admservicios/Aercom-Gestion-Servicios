@@ -592,3 +592,68 @@ class ResultadoTrabajoVisita(models.Model):
         constraints = [
             models.UniqueConstraint(fields=("visita", "trabajo"), name="resultado_unico_por_visita_y_trabajo"),
         ]
+
+
+class FacturacionMensualAbono(models.Model):
+    class Estado(models.TextChoices):
+        PENDIENTE = "pendiente", "Pendiente de facturar"
+        FACTURADA = "facturada", "Facturada"
+        NO_CORRESPONDE = "no_corresponde", "No corresponde"
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="facturacion_mensual")
+    periodo = models.DateField()
+    contrato = models.ForeignKey(ContratoAbono, on_delete=models.PROTECT, blank=True, null=True)
+    estado = models.CharField(max_length=14, choices=Estado, default=Estado.PENDIENTE)
+    fecha_prevista = models.DateField("Fecha prevista de facturación", blank=True, null=True)
+    modalidad = models.CharField("Modalidad de facturación", max_length=140, blank=True)
+    importe = models.DecimalField(
+        max_digits=14, decimal_places=2, blank=True, null=True, validators=[MinValueValidator(0)],
+    )
+    moneda = models.CharField(
+        max_length=3, blank=True, validators=[RegexValidator(r"^[A-Z]{3}\Z", "Ingresá un código como ARS o USD.")],
+    )
+    ajuste = models.CharField("Ajuste aplicado o criterio", max_length=240, blank=True)
+    requiere_oc = models.BooleanField("Requiere orden de compra (OC)", default=False)
+    requiere_hes = models.BooleanField("Requiere hoja de entrada de servicios (HES)", default=False)
+    orden_compra = models.CharField("Referencia OC", max_length=120, blank=True)
+    hes = models.CharField("Referencia HES", max_length=120, blank=True)
+    portal = models.CharField(max_length=200, blank=True)
+    observaciones = models.TextField(blank=True)
+    factura_sap = models.CharField("Referencia de factura en SAP", max_length=120, blank=True)
+    fecha_factura = models.DateField("Fecha de emisión en SAP", blank=True, null=True)
+    actualizado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    actualizado_el = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-periodo", "-pk")
+        constraints = [
+            models.UniqueConstraint(fields=("cliente", "periodo"), name="facturacion_abono_unica_por_periodo"),
+            models.CheckConstraint(condition=models.Q(periodo__day=1), name="facturacion_abono_inicio_de_mes"),
+            models.CheckConstraint(
+                condition=models.Q(importe__gte=0) | models.Q(importe__isnull=True), name="facturacion_abono_importe_no_negativo",
+            ),
+        ]
+
+    def clean(self):
+        errores = {}
+        if self.estado != self.Estado.NO_CORRESPONDE and not self.contrato_id:
+            errores["estado"] = "Seleccioná un contrato del período para registrar facturación."
+        if self.contrato_id and self.contrato.cliente_id != self.cliente_id:
+            errores["estado"] = "El contrato debe pertenecer al cliente de la facturación."
+        if self.estado == self.Estado.NO_CORRESPONDE and not self.observaciones:
+            errores["observaciones"] = "Indicá por qué no corresponde facturar este período."
+        if self.estado == self.Estado.FACTURADA:
+            if not self.factura_sap:
+                errores["factura_sap"] = "Ingresá la referencia de la factura emitida en SAP."
+            if not self.fecha_factura:
+                errores["fecha_factura"] = "Ingresá la fecha de emisión."
+            if self.importe is None:
+                errores["importe"] = "Ingresá el importe facturado."
+            if not self.moneda:
+                errores["moneda"] = "Ingresá la moneda de la factura."
+        elif self.factura_sap or self.fecha_factura:
+            errores["estado"] = "Marcá Facturada si ya registraste el comprobante de SAP."
+        if self.fecha_factura and self.fecha_factura > timezone.localdate():
+            errores["fecha_factura"] = "La fecha de emisión no puede ser futura."
+        if errores:
+            raise ValidationError(errores)

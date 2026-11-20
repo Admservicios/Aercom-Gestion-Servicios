@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import ClienteForm, ContactoClienteForm, DocumentoClienteForm, EquipoForm, PlantaForm
 from .models import Accion, Cliente, ContactoCliente, Cotizacion, DocumentoCliente, Equipo, PedidoServicio, Planta
-from .permisos import edicion_catalogo_requerida, oficina_requerida
+from .permisos import ROLES_FACTURACION_ABONOS, edicion_catalogo_requerida, oficina_requerida, roles
 
 
 @oficina_requerida
@@ -36,6 +36,9 @@ def cliente(request, pk):
         "cotizaciones": Cotizacion.objects.filter(ticket__cliente_ficha=registro),
         "pedidos": PedidoServicio.objects.filter(ticket__cliente_ficha=registro),
         "visitas": registro.visitas.select_related("planta").order_by("-fecha", "-hora_desde", "-pk"),
+        "facturacion_mensual": (
+            registro.facturacion_mensual.all() if roles(request.user) & ROLES_FACTURACION_ABONOS else ()
+        ),
         "contactos": registro.contactos.select_related("planta"),
         "documentos": registro.documentos.all(),
         "pagina": Paginator(acciones, 30).get_page(request.GET.get("page")),
