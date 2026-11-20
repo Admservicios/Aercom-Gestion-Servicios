@@ -131,6 +131,9 @@ def mostrar_pedido(request, pedido, form=None, error=None):
     pasos = transiciones(request.user, pedido)
     return render(request, "servicios/pedido_detalle.html", {
         "pedido": pedido, "form": (form or SeguimientoPedidoForm(pasos)) if pasos else None, "error": error,
+        "admite_visita": pedido.tipo == Tipo.SERVICIO and pedido.estado in (
+            Estado.ENVIADO, Estado.PENDIENTE_AGENDAR, Estado.AGENDADO,
+        ),
     })
 
 

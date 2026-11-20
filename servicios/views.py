@@ -112,9 +112,15 @@ def vincular_ticket(request, pk):
     registros = Ticket.objects.select_for_update() if request.method == "POST" else Ticket.objects
     registro = get_object_or_404(registros, pk=pk)
     cliente_anterior = registro.cliente_ficha_id
+    planta_anterior = registro.planta_ficha_id
     form = VinculoTicketForm(request.POST if request.method == "POST" else None, instance=registro)
     if form.is_bound and form.is_valid():
-        if registro.cliente_ficha_id != cliente_anterior and (
+        if (registro.cliente_ficha_id, registro.planta_ficha_id) != (cliente_anterior, planta_anterior) and (
+            registro.acciones.filter(visitas_agendadas__isnull=False).exists()
+            or registro.pedidos_servicio.filter(visitas__isnull=False).exists()
+        ):
+            form.add_error("planta_ficha", "El ticket está vinculado a una visita. Conservá su cliente y planta.")
+        elif registro.cliente_ficha_id != cliente_anterior and (
             registro.solicitudes_cotizacion.exists() or registro.cotizaciones.exists() or registro.pedidos_servicio.exists()
         ):
             form.add_error("cliente_ficha", "El ticket tiene solicitudes, cotizaciones o pedidos asociados. Conservá su cliente.")

@@ -1,0 +1,31 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'agenda' %}?dia={{ visita.fecha|date:'Y-m-d' }}">Volver a la agenda del día</a></p>
+<h1>Visita V-{{ visita.pk }}</h1>
+<p><a href="{% url 'cliente' visita.cliente_id %}">{{ visita.cliente.nombre }}</a>
+{% if visita.planta_id %} · <a href="{% url 'planta' visita.planta_id %}">{{ visita.planta.nombre }}</a>{% endif %}</p>
+<article>
+  <h2>Programación</h2>
+  <p>{{ visita.fecha|date:"d/m/Y" }} · {{ visita.hora_desde|time:"H:i" }} a {{ visita.hora_hasta|time:"H:i" }}</p>
+  {% if visita.referencia_excel %}<p>Agenda General: {{ visita.referencia_excel }}</p>{% endif %}
+  <p>Técnicos: {% for tecnico in visita.tecnicos.all %}{{ tecnico.get_full_name|default:tecnico.username }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+  {{ visita.indicaciones|linebreaks }}
+  {% if puede_editar_agenda %}<p><a href="{% url 'reprogramar_visita' visita.pk %}">Registrar reprogramación</a></p>{% endif %}
+</article>
+<article>
+  <h2>Pedidos y trabajos</h2>
+  <ul>
+    {% for pedido in visita.pedidos.all %}<li><a href="{% url 'pedido_servicio' pedido.pk %}">PS-{{ pedido.pk }} · {{ pedido.referencia|default:pedido.ticket.asunto }}</a></li>{% endfor %}
+    {% for trabajo in visita.trabajos.all %}<li><a href="{% url 'ticket' trabajo.ticket_id %}#accion-{{ trabajo.pk }}">{{ trabajo.titulo }}</a></li>{% endfor %}
+  </ul>
+</article>
+<article>
+  <h2>Historial de programación</h2>
+  <ul>{% for cambio in visita.movimientos.all %}
+    <li>{{ cambio.fecha|date:"d/m/Y" }} · {{ cambio.hora_desde|time:"H:i" }} a {{ cambio.hora_hasta|time:"H:i" }}
+    · {{ cambio.autor.get_full_name|default:cambio.autor.username }} · registrado el {{ cambio.registrado_el|date:"d/m/Y H:i" }}
+    {% if cambio.referencia_excel %} · {{ cambio.referencia_excel }}{% endif %}
+    {% if cambio.motivo %} · {{ cambio.motivo }}{% endif %}</li>
+  {% endfor %}</ul>
+</article>
+{% endblock %}

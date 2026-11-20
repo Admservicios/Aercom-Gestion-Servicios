@@ -37,6 +37,15 @@
   </form>
 </article>
 {% endif %}
+{% if pedido.tipo == "servicio" %}
+<article>
+  <h2>Visitas en Agenda</h2>
+  {% if puede_editar_agenda and admite_visita %}<p><a href="{% url 'visita_pedido' pedido.pk %}">Registrar visita de Excel</a></p>{% endif %}
+  <ul>{% for visita in pedido.visitas.all %}
+    <li><a href="{% url 'visita' visita.pk %}">{{ visita.fecha|date:"d/m/Y" }} · {{ visita.hora_desde|time:"H:i" }}</a></li>
+  {% empty %}<li>Sin visitas vinculadas.</li>{% endfor %}</ul>
+</article>
+{% endif %}
 <article>
   <h2>Historial del pedido</h2>
   <ul>{% for cambio in pedido.cambios.all %}

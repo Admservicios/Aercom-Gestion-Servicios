@@ -35,6 +35,7 @@ def cliente(request, pk):
         "tickets": registro.tickets.order_by("-pk"),
         "cotizaciones": Cotizacion.objects.filter(ticket__cliente_ficha=registro),
         "pedidos": PedidoServicio.objects.filter(ticket__cliente_ficha=registro),
+        "visitas": registro.visitas.select_related("planta").order_by("-fecha", "-hora_desde", "-pk"),
         "contactos": registro.contactos.select_related("planta"),
         "documentos": registro.documentos.all(),
         "pagina": Paginator(acciones, 30).get_page(request.GET.get("page")),

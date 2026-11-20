@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Cotizacion, Equipo, Planta, RegistroMantenimiento, Ticket
 from .models import RespuestaPrecio, SolicitudCotizacion, SolicitudPrecio
-from .models import PedidoServicio
+from .models import PedidoServicio, Visita
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -828,3 +828,78 @@ class PedidoServicioTest(TestCase):
         campo.groups.add(Group.objects.get(name=Rol.CAMPO))
         self.client.force_login(campo)
         self.assertEqual(self.client.get(detalle).status_code, 403)
+
+
+class AgendaOperativaTest(TestCase):
+    def setUp(self):
+        self.coordinacion = User.objects.create_user("coordinacion.agenda")
+        self.coordinacion.groups.add(Group.objects.create(name=Rol.COORDINACION))
+        self.client.force_login(self.coordinacion)
+        campo = Group.objects.get(name=Rol.CAMPO)
+        self.tecnico = User.objects.create_user("bruno.agenda")
+        self.segundo = User.objects.create_user("vera.agenda")
+        self.ajeno = User.objects.create_user("otro.agenda")
+        campo.user_set.add(self.tecnico, self.segundo, self.ajeno)
+        self.cliente = Cliente.objects.create(codigo="AB-52", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.planta = self.cliente.plantas.create(codigo="P-1", nombre="Planta ficticia")
+        self.ticket = Ticket.objects.create(
+            asunto="Servicio ficticio", cliente_ficha=self.cliente, planta_ficha=self.planta, creado_por=self.coordinacion,
+        )
+        self.pedido = self.ticket.pedidos_servicio.create(alcance="Visita de ejemplo", estado=PedidoServicio.Estado.ENVIADO)
+        self.trabajo = self.ticket.acciones.create(titulo="Revisar vibración", responsable=self.tecnico)
+        self.otro_trabajo = self.ticket.acciones.create(titulo="Lavar generador", responsable=self.segundo)
+        self.alta = reverse("visita_pedido", args=[self.pedido.pk])
+        self.datos = {
+            "planta": self.planta.pk, "fecha": "2026-12-15", "hora_desde": "09:00", "hora_hasta": "11:00",
+            "referencia_excel": "DATOS, fila ficticia 15", "tecnicos": [self.tecnico.pk, self.segundo.pk],
+            "pedidos": [self.pedido.pk], "trabajos": [self.trabajo.pk, self.otro_trabajo.pk],
+        }
+
+    def test_visita_con_varios_tecnicos_y_trabajos_y_filtro(self):
+        respuesta = self.client.post(self.alta, self.datos)
+        visita = Visita.objects.get()
+        detalle = reverse("visita", args=[visita.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertEqual(set(visita.tecnicos.all()), {self.tecnico, self.segundo})
+        self.assertEqual(set(visita.trabajos.all()), {self.trabajo, self.otro_trabajo})
+        self.pedido.refresh_from_db()
+        self.assertEqual(self.pedido.estado, PedidoServicio.Estado.AGENDADO)
+        for tecnico in (self.tecnico, self.segundo):
+            agenda = self.client.get(reverse("agenda"), {"dia": self.datos["fecha"], "tecnico": tecnico.pk})
+            self.assertContains(agenda, "Revisar vibración")
+            self.assertContains(agenda, "Planta ficticia")
+        agenda = self.client.get(reverse("agenda"), {"dia": self.datos["fecha"], "tecnico": self.ajeno.pk})
+        self.assertNotContains(agenda, detalle)
+        self.assertContains(self.client.get(reverse("pedido_servicio", args=[self.pedido.pk])), detalle)
+        self.assertContains(self.client.get(reverse("cliente", args=[self.cliente.pk])), detalle)
+
+    def test_reprogramacion_conserva_fecha_anterior_y_actualiza_pedido(self):
+        self.client.post(self.alta, self.datos)
+        visita = Visita.objects.get()
+        editar = reverse("reprogramar_visita", args=[visita.pk])
+        datos = {
+            "fecha": "2026-12-17", "hora_desde": "10:00", "hora_hasta": "12:00",
+            "referencia_excel": "DATOS, fila ficticia 17",
+        }
+        self.assertTrue(self.client.post(editar, datos).context["form"].has_error("motivo", "required"))
+        motivo = "Reprogramada a pedido del cliente"
+        self.assertRedirects(self.client.post(editar, {**datos, "motivo": motivo}), reverse("visita", args=[visita.pk]))
+        self.pedido.refresh_from_db()
+        self.assertEqual(self.pedido.fecha_agendada, date(2026, 12, 17))
+        movimientos = list(visita.movimientos.order_by("pk"))
+        self.assertEqual([movimiento.fecha for movimiento in movimientos], [date(2026, 12, 15), date(2026, 12, 17)])
+        self.assertEqual(movimientos[-1].motivo, motivo)
+        self.assertContains(self.client.post(editar, {**datos, "motivo": motivo}), "Indicá una fecha u horario diferente.")
+        self.assertEqual(visita.movimientos.count(), 2)
+
+    def test_validaciones_y_permisos(self):
+        cliente_ajeno = Cliente.objects.create(codigo="TE-52", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        otro_ticket = Ticket.objects.create(asunto="Otro cliente", cliente_ficha=cliente_ajeno, creado_por=self.coordinacion)
+        ajeno = otro_ticket.acciones.create(titulo="Trabajo ajeno", responsable=self.tecnico)
+        respuesta = self.client.post(self.alta, {**self.datos, "hora_hasta": "08:00", "trabajos": [ajeno.pk]})
+        self.assertTrue(respuesta.context["form"].has_error("trabajos", "invalid_choice"))
+        self.assertContains(respuesta, "La hora de fin debe ser posterior")
+        self.assertFalse(Visita.objects.exists())
+        self.client.force_login(self.tecnico)
+        self.assertEqual(self.client.get(reverse("agenda")).status_code, 403)
+        self.assertEqual(self.client.post(self.alta, self.datos).status_code, 403)

@@ -526,3 +526,48 @@ class CambioPedidoServicio(models.Model):
 
     class Meta:
         ordering = ("-pk",)
+
+
+class Visita(models.Model):
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="visitas")
+    planta = models.ForeignKey(Planta, on_delete=models.PROTECT, related_name="visitas", null=True, blank=True)
+    pedidos = models.ManyToManyField(PedidoServicio, related_name="visitas", blank=True)
+    trabajos = models.ManyToManyField(Accion, related_name="visitas_agendadas", blank=True)
+    tecnicos = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="visitas_asignadas")
+    fecha = models.DateField()
+    hora_desde = models.TimeField("Hora de inicio")
+    hora_hasta = models.TimeField("Hora de fin")
+    referencia_excel = models.CharField("Referencia en la Agenda General", max_length=150, blank=True)
+    indicaciones = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("fecha", "hora_desde", "pk")
+        indexes = [models.Index(fields=("fecha", "hora_desde"), name="visita_fecha_horario")]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(hora_hasta__gt=models.F("hora_desde")), name="visita_horario_ordenado",
+            ),
+        ]
+
+    def clean(self):
+        errores = {}
+        if self.hora_desde and self.hora_hasta and self.hora_hasta <= self.hora_desde:
+            errores["hora_hasta"] = "La hora de fin debe ser posterior a la de inicio."
+        if self.planta_id and self.planta.cliente_id != self.cliente_id:
+            errores["planta"] = "La planta debe pertenecer al cliente de la visita."
+        if errores:
+            raise ValidationError(errores)
+
+
+class MovimientoAgenda(models.Model):
+    visita = models.ForeignKey(Visita, on_delete=models.CASCADE, related_name="movimientos")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    fecha = models.DateField()
+    hora_desde = models.TimeField()
+    hora_hasta = models.TimeField()
+    referencia_excel = models.CharField(max_length=150, blank=True)
+    motivo = models.CharField(max_length=300, blank=True)
+    registrado_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)
