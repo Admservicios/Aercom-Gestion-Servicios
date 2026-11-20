@@ -237,6 +237,13 @@ class Ticket(models.Model):
             raise ValidationError(errores)
 
 
+class CategoriaEspera(models.TextChoices):
+    CLIENTE = "cliente", "Cliente"
+    COMPRAS = "compras", "Compras"
+    DOCUMENTACION = "documentacion", "Documentación"
+    OTRA = "otra", "Otra espera"
+
+
 class Accion(models.Model):
     class Estado(models.TextChoices):
         ASIGNADA = "asignada", "Asignada"
@@ -259,6 +266,9 @@ class Accion(models.Model):
     facturacion = models.CharField(max_length=16, choices=Facturacion, default=Facturacion.A_DEFINIR)
     estado = models.CharField(max_length=16, choices=Estado, default=Estado.ASIGNADA)
     motivo_espera = models.CharField(max_length=240, blank=True)
+    categoria_espera = models.CharField(
+        "Motivo de espera", max_length=16, choices=CategoriaEspera, blank=True,
+    )
     proximo_paso = models.CharField("Próximo paso", max_length=240, blank=True)
     depende_de = models.ForeignKey(
         "self", on_delete=models.RESTRICT, null=True, blank=True, related_name="acciones_siguientes",
@@ -810,3 +820,25 @@ class LlamadaServicioSAP(models.Model):
         constraints = [
             models.UniqueConstraint(fields=("cliente", "referencia"), name="llamada_sap_unica_por_cliente"),
         ]
+
+
+class MovimientoTiempoAccion(models.Model):
+    class Tipo(models.TextChoices):
+        ASIGNACION = "asignacion", "Asignada"
+        TOMA = "toma", "Tomada o retomada"
+        ESPERA = "espera", "En espera"
+        DERIVACION = "derivacion", "Derivada"
+        FINALIZACION = "finalizacion", "Completada"
+
+    accion = models.ForeignKey(Accion, on_delete=models.CASCADE, related_name="movimientos_tiempo")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    puesto = models.CharField(max_length=70)
+    tipo = models.CharField(max_length=12, choices=Tipo)
+    categoria_espera = models.CharField(max_length=16, choices=CategoriaEspera, blank=True)
+    motivo = models.CharField(max_length=240, blank=True)
+    ocurrio_el = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ("ocurrio_el", "pk")
+        indexes = [models.Index(fields=("accion", "ocurrio_el"), name="tiempo_accion_fecha")]

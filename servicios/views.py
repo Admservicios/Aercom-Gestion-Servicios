@@ -9,10 +9,11 @@ from django.views.decorators.http import require_POST
 from .campo_servicios import visitas_de_campo
 from .facturacion_trabajos import solicitudes_facturacion_visibles
 from .forms import TicketForm, VinculoTicketForm
-from .models import Accion, CambioAccion, PedidoServicio, Ticket, Visita
+from .models import Accion, CambioAccion, CategoriaEspera, MovimientoTiempoAccion, PedidoServicio, Ticket, Visita
 from .permisos import Rol, es_oficina, oficina_requerida, roles, servicios_requeridos
 from .seguimiento import ResponsableField, responsables_disponibles, respuesta_accion_bloqueada
 from .solicitudes import solicitudes_visibles
+from .tiempos import registrar_movimiento
 
 
 class AccionForm(forms.ModelForm):
@@ -40,6 +41,9 @@ class EstadoForm(forms.Form):
         (Accion.Estado.EN_ESPERA, Accion.Estado.EN_ESPERA.label),
     ])
     motivo = forms.CharField(label="Qué falta para avanzar", required=False, max_length=240)
+    categoria_espera = forms.ChoiceField(
+        choices=[("", "Elegí un motivo"), *CategoriaEspera.choices], required=False, label="Motivo de espera",
+    )
 
     def clean(self):
         datos = super().clean()
@@ -162,6 +166,7 @@ def ticket(request, pk):
 
 @oficina_requerida
 @require_POST
+@transaction.atomic
 def agregar(request, pk):
     registro = get_object_or_404(Ticket, pk=pk)
     form = AccionForm(request.POST, ticket=registro)
@@ -170,6 +175,7 @@ def agregar(request, pk):
         accion.ticket = registro
         accion.asignada_por = request.user
         accion.save()
+        registrar_movimiento(accion, MovimientoTiempoAccion.Tipo.ASIGNACION, request.user, fecha=accion.asignada_el)
         return redirect("ticket", pk=pk)
     return ver_ticket(request, registro, form)
 
@@ -191,10 +197,13 @@ def realizar(request, pk):
     if not accion.realizada_el and Rol.CAMPO in roles(request.user):
         if accion.visitas_agendadas.filter(tecnicos=request.user).exists():
             return redirect("servicios_tecnicos")
-    propias.filter(pk=pk, realizada_el__isnull=True).update(
-        estado=Accion.Estado.REALIZADA, motivo_espera="",
-        realizada_el=timezone.now(), realizada_por=request.user,
-    )
+    if not accion.realizada_el:
+        fecha = timezone.now()
+        propias.filter(pk=pk).update(
+            estado=Accion.Estado.REALIZADA, motivo_espera="", categoria_espera="",
+            realizada_el=fecha, realizada_por=request.user,
+        )
+        registrar_movimiento(accion, MovimientoTiempoAccion.Tipo.FINALIZACION, request.user, fecha=fecha)
     return volver_a_accion(request, accion)
 
 
@@ -203,7 +212,7 @@ def realizar(request, pk):
 @transaction.atomic
 def cambiar_estado(request, pk):
     propias = Accion.objects.filter(responsable=request.user)
-    accion = get_object_or_404(propias, pk=pk)
+    accion = get_object_or_404(propias.select_for_update(), pk=pk)
     form = EstadoForm(request.POST, auto_id=False)
     form.is_valid()
     if form.cleaned_data.get("estado") == Accion.Estado.EN_CURSO and accion.bloqueada_por_previa:
@@ -213,9 +222,13 @@ def cambiar_estado(request, pk):
             return ver_ticket(request, accion.ticket, AccionForm(ticket=accion.ticket), form, accion.pk)
         return ver_campo(request, form, accion.pk)
     estado = form.cleaned_data["estado"]
-    motivo = form.cleaned_data["motivo"] if estado == Accion.Estado.EN_ESPERA else ""
-    if propias.filter(pk=pk, realizada_el__isnull=True).exclude(estado=estado, motivo_espera=motivo).update(
-        estado=estado, motivo_espera=motivo,
-    ):
+    espera = estado == Accion.Estado.EN_ESPERA
+    motivo = form.cleaned_data["motivo"] if espera else ""
+    categoria = (form.cleaned_data.get("categoria_espera") or CategoriaEspera.OTRA) if espera else ""
+    if propias.filter(pk=pk, realizada_el__isnull=True).exclude(
+        estado=estado, motivo_espera=motivo, categoria_espera=categoria,
+    ).update(estado=estado, motivo_espera=motivo, categoria_espera=categoria):
         CambioAccion.objects.create(accion=accion, autor=request.user, estado=estado, motivo=motivo)
+        evento = MovimientoTiempoAccion.Tipo.ESPERA if espera else MovimientoTiempoAccion.Tipo.TOMA
+        registrar_movimiento(accion, evento, request.user, motivo=motivo, categoria=categoria)
     return volver_a_accion(request, accion)

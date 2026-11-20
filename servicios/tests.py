@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 from secrets import token_urlsafe
+from unittest.mock import patch
 
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
@@ -12,6 +13,7 @@ from .models import RespuestaPrecio, SolicitudCotizacion, SolicitudPrecio
 from .models import FacturacionMensualAbono, PedidoServicio, Visita
 from .models import ResultadoTrabajoVisita, SolicitudFacturacionTrabajo
 from .models import LlamadaServicioSAP
+from .models import MovimientoTiempoAccion
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -1315,3 +1317,68 @@ class SeguimientoTicketTest(TestCase):
         self.assertEqual(self.paralela.cambios.get().proximo_paso, "Cargar fotos")
         self.assertEqual(self.client.get(vincular).status_code, 403)
         self.assertEqual(self.client.get(reverse("pendientes")).status_code, 403)
+
+
+class TiemposPorPuestoTest(TestCase):
+    def setUp(self):
+        self.oficina = User.objects.create_user("oficina.tiempos")
+        self.oficina.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.comercial = User.objects.create_user("comercial.tiempos")
+        self.comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(self.oficina)
+        cliente = Cliente.objects.create(codigo="AB-72", nombre="Cliente ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.ticket = Ticket.objects.create(asunto="Gestión de repuesto", cliente_ficha=cliente, creado_por=self.oficina)
+        self.inicio = timezone.now() - timedelta(days=1)
+
+    def post_en(self, hora, vista, datos=None):
+        with patch("django.utils.timezone.now", return_value=self.inicio + timedelta(hours=hora)):
+            return self.client.post(vista, datos or {})
+
+    def test_mide_pasadas_repetidas_y_esperas_sin_contarlas_dos_veces(self):
+        alta = reverse("agregar", args=[self.ticket.pk])
+        self.assertRedirects(self.post_en(0, alta, {
+            "titulo": "Pedir precio", "responsable": self.oficina.pk, "tipo": "tarea", "facturacion": "a_definir",
+        }), reverse("ticket", args=[self.ticket.pk]))
+        accion = self.ticket.acciones.get()
+        estado = reverse("cambiar_estado", args=[accion.pk])
+        derivar = reverse("derivar_accion", args=[accion.pk])
+        self.post_en(1, estado, {"estado": "en_curso"})
+        self.post_en(2, estado, {"estado": "en_espera", "motivo": "Falta precio", "categoria_espera": "compras"})
+        self.post_en(4, derivar, {"responsable": self.comercial.pk, "motivo": "Revisar con Comercial"})
+        self.client.force_login(self.comercial)
+        self.post_en(5, estado, {"estado": "en_espera", "motivo": "Falta respuesta", "categoria_espera": "cliente"})
+        self.post_en(7, derivar, {"responsable": self.oficina.pk, "motivo": "Volver a Administración"})
+        self.client.force_login(self.oficina)
+        self.post_en(8, estado, {"estado": "en_curso"})
+        realizar = reverse("realizar", args=[accion.pk])
+        self.post_en(9, realizar)
+        self.post_en(10, realizar)
+        detalle = reverse("tiempos_accion", args=[accion.pk])
+        respuesta = self.client.get(detalle)
+        pasadas = respuesta.context["pasadas"]
+        self.assertEqual([p["puesto"] for p in pasadas], [Rol.ADMINISTRACION, Rol.COMERCIAL, Rol.ADMINISTRACION])
+        self.assertEqual([p["total"] for p in pasadas], [timedelta(hours=4), timedelta(hours=3), timedelta(hours=2)])
+        totales = respuesta.context["totales"]
+        self.assertEqual(totales[Rol.ADMINISTRACION]["total"], timedelta(hours=6))
+        self.assertEqual(totales[Rol.ADMINISTRACION]["esperas"]["Compras"], timedelta(hours=2))
+        self.assertEqual(totales[Rol.COMERCIAL]["esperas"]["Cliente"], timedelta(hours=2))
+        self.assertEqual(accion.movimientos_tiempo.filter(tipo=MovimientoTiempoAccion.Tipo.FINALIZACION).count(), 1)
+        self.assertContains(respuesta, "Horas corridas")
+        self.assertContains(respuesta, "Espera de Compras")
+        self.assertContains(self.client.get(reverse("tiempos_por_puesto"), {"q": f"T-{self.ticket.pk}"}), detalle)
+
+    def test_accion_anterior_mide_desde_primer_evento_y_protege_permisos(self):
+        accion = self.ticket.acciones.create(titulo="Acción previa", responsable=self.oficina)
+        detalle = reverse("tiempos_accion", args=[accion.pk])
+        self.assertContains(self.client.get(detalle), "todavía no tiene movimientos")
+        estado = reverse("cambiar_estado", args=[accion.pk])
+        self.post_en(0, estado, {"estado": "en_espera", "motivo": "Falta la OC", "categoria_espera": "documentacion"})
+        with patch("django.utils.timezone.now", return_value=self.inicio + timedelta(hours=3)):
+            respuesta = self.client.get(detalle)
+        self.assertTrue(respuesta.context["registro_parcial"])
+        self.assertEqual(respuesta.context["pasadas"][0]["esperas"], {"Documentación": timedelta(hours=3)})
+        campo = User.objects.create_user("campo.tiempos")
+        campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(campo)
+        self.assertEqual(self.client.get(detalle).status_code, 403)
+        self.assertEqual(self.client.post(reverse("derivar_accion", args=[accion.pk])).status_code, 403)

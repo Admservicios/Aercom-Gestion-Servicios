@@ -1,0 +1,36 @@
+{% extends "servicios/base.html" %}
+{% load tiempos_servicios %}
+{% block contenido %}
+<p><a href="{% url 'ticket' accion.ticket_id %}#accion-{{ accion.pk }}">Volver a la acción en T-{{ accion.ticket_id }}</a></p>
+<h1>Tiempos por puesto</h1>
+<p>{{ accion.titulo }} · Horas corridas</p>
+{% if registro_parcial %}<p>La medición comienza en el primer movimiento registrado. El tiempo anterior queda sin medir.</p>{% endif %}
+{% if pasadas %}
+<article>
+  <h2>Totales por puesto</h2>
+  <ul>{% for puesto, total in totales.items %}
+    <li>{{ puesto }} · {{ total.total|horas_corridas }}
+    {% if total.esperas %}<ul>{% for etiqueta, duracion in total.esperas.items %}<li>Espera de {{ etiqueta }} · {{ duracion|horas_corridas }}</li>{% endfor %}</ul>{% endif %}</li>
+  {% endfor %}</ul>
+</article>
+<article>
+  <h2>Pasadas por puesto</h2>
+  <ol>{% for pasada in pasadas %}
+    <li>{{ pasada.puesto }} · {{ pasada.responsable.get_full_name|default:pasada.responsable.username }}
+    <br>{{ pasada.inicio|date:"d/m/Y H:i" }} a {% if pasada.fin %}{{ pasada.fin|date:"d/m/Y H:i" }}{% else %}ahora{% endif %} · {{ pasada.total|horas_corridas }}
+    {% if pasada.esperas %}<ul>{% for etiqueta, duracion in pasada.esperas.items %}<li>Espera de {{ etiqueta }} · {{ duracion|horas_corridas }}</li>{% endfor %}</ul>{% endif %}</li>
+  {% endfor %}</ol>
+</article>
+<article>
+  <h2>Movimientos</h2>
+  <ul>{% for movimiento in movimientos %}
+    <li>{{ movimiento.get_tipo_display }} · {{ movimiento.puesto }} · {{ movimiento.ocurrio_el|date:"d/m/Y H:i" }}
+    · {{ movimiento.autor.get_full_name|default:movimiento.autor.username }}
+    {% if movimiento.categoria_espera %} · {{ movimiento.get_categoria_espera_display }}{% endif %}
+    {% if movimiento.motivo %} · {{ movimiento.motivo }}{% endif %}</li>
+  {% endfor %}</ul>
+</article>
+{% else %}
+<p>Esta acción todavía no tiene movimientos con tiempo registrado.</p>
+{% endif %}
+{% endblock %}

@@ -1,16 +1,21 @@
 from django import forms
 from django.core.paginator import Paginator
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .models import Accion, ResultadoTrabajoVisita, Visita
+from .models import Accion, CategoriaEspera, MovimientoTiempoAccion, ResultadoTrabajoVisita, Visita
 from .permisos import Rol, campo_requerido, es_oficina, roles, servicios_requeridos
+from .tiempos import registrar_movimiento
 
 
 Estado = ResultadoTrabajoVisita.Estado
 
 
 class ResultadoForm(forms.ModelForm):
+    categoria_espera = forms.ChoiceField(
+        choices=[("", "Elegí un motivo"), *CategoriaEspera.choices], required=False, label="Motivo de espera",
+    )
     class Meta:
         model = ResultadoTrabajoVisita
         fields = ("estado", "observacion", "referencia_sap")
@@ -47,8 +52,10 @@ def detalle(request, pk):
     trabajos = visita.trabajos.select_related("responsable", "ticket__equipo_ficha", "depende_de").order_by("pk")
     resultados = visita.resultados.select_related("autor", "responsable")
     if not oficina:
-        trabajos = trabajos.filter(responsable=request.user)
-        resultados = resultados.filter(trabajo__responsable=request.user)
+        trabajos = trabajos.filter(
+            Q(responsable=request.user) | Q(resultados_visita__visita=visita, resultados_visita__autor=request.user),
+        ).distinct()
+        resultados = resultados.filter(autor=request.user)
     por_trabajo = {resultado.trabajo_id: resultado for resultado in resultados}
     fichas = [(trabajo, por_trabajo.get(trabajo.pk)) for trabajo in trabajos]
     return render(request, "servicios/servicio_visita.html", {
@@ -82,12 +89,21 @@ def registrar_resultado(request, visita_id, pk):
             trabajo.realizada_por = resultado.autor
             trabajo.realizada_el = resultado.registrado_el
             trabajo.motivo_espera = ""
-            trabajo.save(update_fields=["estado", "realizada_por", "realizada_el", "motivo_espera"])
+            trabajo.categoria_espera = ""
+            trabajo.save(update_fields=["estado", "realizada_por", "realizada_el", "motivo_espera", "categoria_espera"])
+            registrar_movimiento(
+                trabajo, MovimientoTiempoAccion.Tipo.FINALIZACION, resultado.autor, fecha=resultado.registrado_el,
+            )
         else:
             trabajo.estado = Accion.Estado.EN_ESPERA
             trabajo.motivo_espera = resultado.observacion
-            trabajo.save(update_fields=["estado", "motivo_espera"])
+            trabajo.categoria_espera = form.cleaned_data["categoria_espera"] or CategoriaEspera.OTRA
+            trabajo.save(update_fields=["estado", "motivo_espera", "categoria_espera"])
             trabajo.cambios.create(autor=resultado.autor, estado=trabajo.estado, motivo=resultado.observacion)
+            registrar_movimiento(
+                trabajo, MovimientoTiempoAccion.Tipo.ESPERA, resultado.autor, fecha=resultado.registrado_el,
+                motivo=resultado.observacion, categoria=trabajo.categoria_espera,
+            )
         return redirect("servicio_visita", pk=visita.pk)
     return render(request, "servicios/resultado_visita_form.html", {
         "visita": visita, "trabajo": trabajo, "form": form,

@@ -9,6 +9,7 @@
   <p>{{ accion.get_estado_display }}{% if accion.bloqueada_por_previa %} · Espera una acción previa{% endif %}
     · {{ accion.responsable.get_full_name|default:accion.responsable.username }} · Desde {{ accion.asignada_el|date:"d/m/Y H:i" }}</p>
   <p>Próximo paso: {{ accion.siguiente_paso }}</p>
+  <p><a href="{% url 'tiempos_accion' accion.pk %}">Ver tiempos por puesto</a></p>
 </article>
 {% empty %}<p>Sin acciones pendientes para la selección.</p>{% endfor %}
 {% if pagina.has_other_pages %}
