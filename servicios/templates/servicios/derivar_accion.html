@@ -1,0 +1,7 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'ticket' accion.ticket_id %}#accion-{{ accion.pk }}">Volver a la acción</a></p>
+<h1>Derivar acción</h1>
+<p>{{ accion.titulo }} · Responsable actual: {{ accion.responsable.get_full_name|default:accion.responsable.username }}</p>
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Guardar derivación</button></form></article>
+{% endblock %}

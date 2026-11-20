@@ -1,0 +1,8 @@
+<div class="titulo-listado">
+  <div>
+    <h1>{{ titulo }}</h1>
+    {% if fecha %}<time datetime="{{ fecha|date:'Y-m-d' }}">{{ fecha|date:"l j \d\e F \d\e Y"|capfirst }}</time>{% endif %}
+    {% if descripcion %}<p>{{ descripcion }}</p>{% endif %}
+  </div>
+  {% if accion_url %}<a class="boton" href="{{ accion_url }}{% if consulta_accion %}?{{ consulta_accion }}{% endif %}">{{ accion_texto }}</a>{% endif %}
+</div>

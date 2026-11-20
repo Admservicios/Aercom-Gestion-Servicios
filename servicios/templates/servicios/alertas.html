@@ -8,6 +8,7 @@
     <p>{% if es_oficina %}<a href="{% url 'ticket' alerta.accion.ticket_id %}">T-{{ alerta.accion.ticket_id }}</a>{% else %}T-{{ alerta.accion.ticket_id }}{% endif %} · {{ alerta.accion.titulo }}</p>
   {% endif %}
   {{ alerta.detalle|linebreaks }}
+{% if es_oficina and alerta.aviso %}<p><a href="{% url 'aviso_operativo' alerta.aviso.pk %}">Ver aviso y atención</a></p>{% endif %}
 </article>
 {% empty %}<p>Sin alertas registradas.</p>{% endfor %}
 {% include "servicios/paginacion.html" %}

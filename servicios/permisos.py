@@ -3,6 +3,8 @@ from functools import wraps
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 
+from .navegacion import navegacion_oficina
+
 
 class Rol:
     RESPONSABLE = "Responsable del área"
@@ -31,7 +33,7 @@ def roles(usuario):
     if not usuario.is_authenticated:
         return set()
     if not hasattr(usuario, "_roles_servicios"):
-        usuario._roles_servicios = set(usuario.groups.values_list("name", flat=True))
+        usuario._roles_servicios = {grupo.name for grupo in usuario.groups.all()}
     return usuario._roles_servicios
 
 
@@ -62,14 +64,22 @@ registro_mantenimiento_requerido = requiere_roles(ROLES_REGISTRO_MANTENIMIENTO)
 
 def menu_por_rol(request):
     asignados = roles(request.user)
-    return {
+    permisos = {
         "es_oficina": bool(asignados & ROLES_OFICINA),
         "es_campo": Rol.CAMPO in asignados,
         "puede_gestionar_cotizaciones": bool(asignados & ROLES_REVISION_COTIZACION),
         "puede_ver_solicitudes": bool(asignados & ROLES_SOLICITUD_COTIZACION),
         "puede_solicitar_cotizacion": Rol.RESPONSABLE_TECNICO in asignados,
+        "puede_registrar_cierre_sap": Rol.ADMINISTRACION in asignados,
+        "puede_ver_gerencia": bool(asignados & ROLES_FACTURACION),
         "puede_facturar_abonos": bool(asignados & ROLES_FACTURACION),
         "puede_editar_agenda": bool(asignados & ROLES_EDICION_AGENDA),
         "puede_editar_catalogo": bool(asignados & ROLES_EDICION_CATALOGO),
         "puede_registrar_mantenimiento": bool(asignados & ROLES_REGISTRO_MANTENIMIENTO),
     }
+
+    vista = request.resolver_match.url_name if request.resolver_match else None
+    # La pantalla para el televisor conserva su formato de ancho completo.
+    if permisos["es_oficina"] and vista != "pantalla_oficina":
+        permisos["navegacion_oficina"] = navegacion_oficina(vista, permisos)
+    return permisos

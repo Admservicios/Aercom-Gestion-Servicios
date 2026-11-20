@@ -1,6 +1,6 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>Cotizaciones de terceros</h1>
+{% include "servicios/encabezado_oficina.html" with titulo="Cotizaciones de terceros" only %}
 <article>
   <form method="get">
     <label for="q">Buscar por número, referencia, cliente o asunto del ticket</label>

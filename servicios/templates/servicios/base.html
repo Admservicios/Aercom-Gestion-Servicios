@@ -6,36 +6,37 @@
 <title>{% block titulo %}Aercom Servicios{% endblock %}</title>
 <link rel="stylesheet" href="{% static 'estilos.css' %}">
 <link rel="stylesheet" href="{% static 'piloto.css' %}">
+{% if navegacion_oficina %}
+<link rel="stylesheet" href="{% static 'oficina.css' %}">
+<script src="{% static 'oficina.js' %}" defer></script>
+{% endif %}
+{% block cabecera %}{% endblock %}
 </head>
-<body>
-<header><div class="marca">Aercom <span>/ Servicios</span></div>
+<body{% if navegacion_oficina %} class="oficina"{% endif %}>
+{% if navegacion_oficina %}
+<a class="salto-contenido" href="#contenido-principal">Ir al contenido</a>
+{% include "servicios/navegacion_oficina.html" %}
+{% endif %}
+<header{% if navegacion_oficina %} class="barra-oficina"{% endif %}>
+{% if navegacion_oficina %}
+<button class="boton-menu-oficina" type="button" aria-expanded="false" aria-controls="menu-oficina" hidden>Menú</button>
+<a class="marca marca-movil" href="{% url 'inicio' %}">Aercom <span>/ Servicios</span></a>
+{% else %}
+<div class="marca">Aercom <span>/ Servicios</span></div>
+{% endif %}
 {% if user.is_authenticated %}<form method="post" action="{% url 'salir' %}">{% csrf_token %}<span>{{ user.get_full_name|default:user.username }}</span> <button>Salir</button></form>{% endif %}
 </header>
 {% block navegacion %}
-{% if es_oficina or es_campo %}
+{% if es_campo and not es_oficina %}
 <nav class="menu-servicios" aria-label="Módulos">
-  {% if es_oficina %}
-  <a href="{% url 'inicio' %}">Inicio</a>
-  <a href="{% url 'tickets' %}">Tickets</a>
-  <a href="{% url 'clientes' %}">Clientes</a>
-  <a href="{% url 'equipos' %}">Equipos</a>
-  <a href="{% url 'pedidos_servicio' %}">Pedidos de servicio</a>
-  <a href="{% url 'agenda' %}">Agenda</a>
-  <a href="{% url 'facturacion_trabajos' %}">Facturación de trabajos</a>
-  {% if puede_facturar_abonos %}<a href="{% url 'facturacion_abonos' %}">Facturación mensual de abonos</a>{% endif %}
-  <a href="{% url 'servicios_tecnicos' %}">Servicios de técnicos</a>
-  <a href="{% url 'cotizaciones_terceros' %}">Cotizaciones de terceros</a>
-  {% if puede_gestionar_cotizaciones %}<a href="{% url 'solicitudes_precio' %}">Solicitudes de precios</a>{% endif %}
-  {% if puede_ver_solicitudes %}<a href="{% url 'solicitudes_cotizacion' %}">Solicitudes de cotización</a>{% endif %}
-  {% else %}
   <a href="{% url 'inicio' %}">Mis tareas</a>
   <a href="{% url 'servicios_tecnicos' %}">Mis visitas</a>
-  {% endif %}
-  <a href="{% url 'alertas' %}">{% if es_oficina %}Alertas de campo{% else %}Mis alertas{% endif %}</a>
-  {% if es_campo %}<a href="{% url 'nueva_alerta' %}">Reportar alerta</a>{% endif %}
+  <a href="{% url 'avisos_operativos' %}">Mis avisos</a>
+  <a href="{% url 'alertas' %}">Mis alertas</a>
+  <a href="{% url 'nueva_alerta' %}">Reportar alerta</a>
 </nav>
 {% endif %}
 {% endblock %}
-<main>{% block contenido %}{% endblock %}</main>
+<main id="contenido-principal"{% if navegacion_oficina %} tabindex="-1"{% endif %}>{% block contenido %}{% endblock %}</main>
 </body>
 </html>

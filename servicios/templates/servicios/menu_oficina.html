@@ -1,19 +1,72 @@
 {% extends "servicios/base.html" %}
-{% block navegacion %}{% endblock %}
+{% block titulo %}Oficina · Aercom Servicios{% endblock %}
 {% block contenido %}
-<h1>Menú de Oficina</h1>
-<nav class="modulos-oficina" aria-label="Módulos">
-  <a href="{% url 'tickets' %}">Tickets</a>
-  <a href="{% url 'clientes' %}">Clientes</a>
-  <a href="{% url 'equipos' %}">Equipos</a>
-  <a href="{% url 'pedidos_servicio' %}">Pedidos de servicio</a>
-  <a href="{% url 'agenda' %}">Agenda</a>
-  <a href="{% url 'facturacion_trabajos' %}">Facturación de trabajos</a>
-  {% if puede_facturar_abonos %}<a href="{% url 'facturacion_abonos' %}">Facturación mensual de abonos</a>{% endif %}
-  <a href="{% url 'servicios_tecnicos' %}">Servicios de técnicos</a>
-  <a href="{% url 'cotizaciones_terceros' %}">Cotizaciones de terceros</a>
-  {% if puede_gestionar_cotizaciones %}<a href="{% url 'solicitudes_precio' %}">Solicitudes de precios</a>{% endif %}
-  {% if puede_ver_solicitudes %}<a href="{% url 'solicitudes_cotizacion' %}">Solicitudes de cotización</a>{% endif %}
-  <a href="{% url 'alertas' %}">Alertas de campo</a>
-</nav>
+{% include "servicios/encabezado_oficina.html" with titulo="Menú de Oficina" fecha=hoy only %}
+
+<div class="resumen-oficina">
+  <section class="panel-oficina panel-agenda" aria-labelledby="servicios-hoy">
+    <div class="panel-cabecera">
+      <h2 id="servicios-hoy">Servicios de hoy</h2>
+      <span class="panel-cuenta" aria-label="{{ total_visitas }} visitas">{{ total_visitas }}</span>
+    </div>
+    {% if visitas_hoy %}
+    <ul class="resumen-registros">
+      {% for visita in visitas_hoy %}
+      <li>
+        <time>{{ visita.hora_desde|time:"H:i" }}</time>
+        <div>
+          <a href="{% url 'visita' visita.pk %}">{{ visita.cliente.nombre }}</a>
+          {% if visita.planta_id %}<small>{{ visita.planta.nombre }}</small>{% endif %}
+        </div>
+        <small>{% for tecnico in visita.tecnicos.all %}{{ tecnico.get_full_name|default:tecnico.username }}{% if not forloop.last %}, {% endif %}{% empty %}Sin técnicos asignados{% endfor %}</small>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="estado-vacio">No hay visitas registradas para hoy.</p>{% endif %}
+    <a class="panel-enlace" href="{% url 'agenda' %}?dia={{ hoy|date:'Y-m-d' }}">Abrir agenda de hoy <span aria-hidden="true">→</span></a>
+  </section>
+
+  <section class="panel-oficina panel-pendientes" aria-labelledby="pendientes-inicio">
+    <div class="panel-cabecera">
+      <h2 id="pendientes-inicio">Pendientes que requieren acción</h2>
+      <span class="panel-cuenta" aria-label="{{ total_pendientes }} acciones pendientes">{{ total_pendientes }}</span>
+    </div>
+    {% if pendientes %}
+    <ul class="resumen-registros">
+      {% for accion in pendientes %}
+      <li>
+        <div>
+          <a href="{% url 'ticket' accion.ticket_id %}#accion-{{ accion.pk }}">{{ accion.titulo }}</a>
+          <small>T-{{ accion.ticket_id }} · {{ accion.responsable.get_full_name|default:accion.responsable.username }}</small>
+          {% if accion.proximo_paso or accion.motivo_espera or accion.depende_de_id %}<small>{{ accion.siguiente_paso|truncatechars:100 }}</small>{% endif %}
+        </div>
+        <span class="etiqueta-oficina{% if accion.bloqueada_por_previa or accion.estado == 'en_espera' %} etiqueta-espera{% elif accion.estado == 'en_curso' %} etiqueta-curso{% endif %}">{% if accion.bloqueada_por_previa %}Bloqueada{% else %}{{ accion.get_estado_display }}{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="estado-vacio">No hay acciones pendientes.</p>{% endif %}
+    <a class="panel-enlace" href="{% url 'pendientes' %}">Ver pendientes <span aria-hidden="true">→</span></a>
+  </section>
+
+  <section class="panel-oficina panel-facturacion" aria-labelledby="facturacion-inicio">
+    <div class="panel-cabecera">
+      <h2 id="facturacion-inicio">Solicitudes de facturación abiertas</h2>
+      <span class="panel-cuenta" aria-label="{{ total_facturacion }} solicitudes abiertas">{{ total_facturacion }}</span>
+    </div>
+    {% if solicitudes_abiertas %}
+    <ul class="resumen-registros">
+      {% for solicitud in solicitudes_abiertas %}
+      <li>
+        <div>
+          <a href="{% url 'facturacion_trabajo' solicitud.pk %}">{{ solicitud.ticket.asunto }}</a>
+          <small>SF-{{ solicitud.pk }} · {{ solicitud.ticket.cliente_nombre }}</small>
+        </div>
+        {% include "servicios/etiqueta_facturacion.html" with solicitud=solicitud only %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="estado-vacio">No hay solicitudes de facturación abiertas para mostrar.</p>{% endif %}
+    <a class="panel-enlace" href="{% url 'facturacion_trabajos' %}?estado=abiertas">Ver solicitudes abiertas <span aria-hidden="true">→</span></a>
+  </section>
+</div>
 {% endblock %}

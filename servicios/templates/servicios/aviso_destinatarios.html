@@ -1,0 +1,8 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'aviso_operativo' aviso.pk %}">Volver al aviso</a></p>
+<h1>Editar destinatarios</h1>
+<p>{{ aviso.titulo }}</p>
+{% if aviso.recordatorio_id or aviso.atendido_por_id %}<p>El responsable del recordatorio y la persona que está atendiendo el aviso conservan el acceso mientras corresponde.</p>{% endif %}
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Guardar destinatarios</button></form></article>
+{% endblock %}

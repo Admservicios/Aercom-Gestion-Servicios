@@ -1,0 +1,7 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% if ticket %}{% url 'ticket' ticket.pk %}{% else %}{% url 'recordatorios' %}{% endif %}">Volver</a></p>
+<h1>Crear recordatorio</h1>
+{% if ticket %}<p>T-{{ ticket.pk }} · {{ ticket.asunto }}</p>{% endif %}
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Guardar recordatorio</button></form></article>
+{% endblock %}

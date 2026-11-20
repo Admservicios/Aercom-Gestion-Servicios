@@ -1,0 +1,16 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+{% include "servicios/encabezado_oficina.html" with titulo="Tiempos por puesto" only %}
+<article>
+  <form method="get">
+    <label for="q">Buscar por número, asunto del ticket o acción</label>
+    <input id="q" name="q" value="{{ consulta }}">
+    <button>Buscar</button>
+  </form>
+  <ul>{% for accion in pagina %}
+  <li><a href="{% url 'tiempos_accion' accion.pk %}">{{ accion.titulo }}</a> · T-{{ accion.ticket_id }} · {{ accion.ticket.asunto }}
+    · {{ accion.responsable.get_full_name|default:accion.responsable.username }} · {{ accion.get_estado_display }}</li>
+  {% empty %}<li>Sin acciones con tiempos registrados para mostrar.</li>{% endfor %}</ul>
+  {% include "servicios/paginacion.html" %}
+</article>
+{% endblock %}

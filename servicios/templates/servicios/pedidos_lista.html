@@ -1,6 +1,6 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>Pedidos de servicio</h1>
+{% include "servicios/encabezado_oficina.html" with titulo="Pedidos de servicio" only %}
 <article>
   <form method="get">
     <label for="q">Buscar por número, referencia, cliente o asunto del ticket</label>

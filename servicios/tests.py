@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 from secrets import token_urlsafe
+from unittest.mock import patch
 
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
@@ -11,6 +12,9 @@ from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Cotizacion, Equ
 from .models import RespuestaPrecio, SolicitudCotizacion, SolicitudPrecio
 from .models import FacturacionMensualAbono, PedidoServicio, Visita
 from .models import ResultadoTrabajoVisita, SolicitudFacturacionTrabajo
+from .models import LlamadaServicioSAP
+from .models import MovimientoTiempoAccion
+from .models import AvisoOperativo, Recordatorio
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -983,6 +987,15 @@ class ServiciosTecnicosTest(TestCase):
         self.trabajo.refresh_from_db()
         self.assertEqual(self.trabajo.estado, Accion.Estado.REALIZADA)
 
+    def test_visita_respeta_la_accion_previa(self):
+        self.trabajo.depende_de = self.otro_trabajo
+        self.trabajo.save(update_fields=["depende_de"])
+        self.client.force_login(self.tecnico)
+        self.assertContains(self.client.get(self.alta), "Registrar resultado")
+        respuesta = self.client.post(self.alta, {"estado": "realizado"})
+        self.assertContains(respuesta, "Completá primero la acción previa")
+        self.assertFalse(ResultadoTrabajoVisita.objects.exists())
+
     def test_acceso_directo_a_visita_o_trabajo_ajeno(self):
         self.client.force_login(self.ajeno)
         self.assertNotContains(self.client.get(reverse("servicios_tecnicos")), self.detalle)
@@ -1160,3 +1173,385 @@ class FacturacionTrabajoTest(TestCase):
         self.client.force_login(otro)
         self.assertEqual(self.client.get(reverse("facturacion_trabajo", args=[solicitud.pk])).status_code, 404)
         self.assertNotContains(self.client.get(reverse("facturacion_trabajos")), "Revisión ficticia")
+
+
+class CierreAdministrativoTest(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("administracion.cierre")
+        self.admin.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.responsable = User.objects.create_user("responsable.cierre")
+        self.responsable.groups.add(Group.objects.create(name=Rol.RESPONSABLE))
+        self.client.force_login(self.admin)
+        self.cliente = Cliente.objects.create(codigo="AB-63", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.ticket = Ticket.objects.create(asunto="Reparación ficticia", cliente_ficha=self.cliente, creado_por=self.admin)
+        self.accion = self.ticket.acciones.create(titulo="Reparación pendiente", responsable=self.responsable)
+        self.solicitud = self.ticket.solicitudes_facturacion.create(solicitante=self.admin, modalidad="previa", cobranza_aplica=True)
+        self.solicitud.trabajos.add(self.accion)
+        self.hoy = timezone.localdate()
+        self.fecha_factura = self.hoy - timedelta(days=1)
+        self.alta = reverse("llamada_sap_facturacion", args=[self.solicitud.pk])
+        self.datos = {"referencia": " ns-ficticia-63 ", "circuito": "puntual", "facturaciones": [self.solicitud.pk]}
+
+    def test_cierre_puntual_despues_de_facturar_conserva_ejecucion_y_cobranza(self):
+        respuesta = self.client.post(self.alta, self.datos)
+        llamada = LlamadaServicioSAP.objects.get()
+        detalle = reverse("llamada_sap", args=[llamada.pk])
+        cerrar = reverse("cerrar_llamada_sap", args=[llamada.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertEqual(llamada.referencia, "NS-FICTICIA-63")
+        cierre = {"fecha": self.fecha_factura.isoformat(), "confirmado": "on"}
+        self.assertContains(self.client.post(cerrar, cierre), "Registrá las facturas en SAP")
+        self.solicitud.factura_sap = "FACTURA-FICTICIA-63"
+        self.solicitud.fecha_factura = self.fecha_factura
+        self.solicitud.actualizar_estado()
+        self.solicitud.save()
+        self.assertContains(self.client.get(detalle), f'value="{self.hoy.isoformat()}"')
+        anterior = (self.fecha_factura - timedelta(days=1)).isoformat()
+        self.assertContains(self.client.post(cerrar, {**cierre, "fecha": anterior}), "El cierre no puede ser anterior")
+        self.assertRedirects(self.client.post(cerrar, cierre), detalle)
+        self.assertRedirects(self.client.post(cerrar, {**cierre, "fecha": self.hoy.isoformat()}), detalle)
+        llamada.refresh_from_db()
+        self.assertEqual(llamada.cerrada_en_sap, self.fecha_factura)
+        self.assertEqual(llamada.cierre_registrado_por, self.admin)
+        self.assertIn("FACTURA-FICTICIA-63", llamada.respaldo_facturas)
+        editar = reverse("actualizar_facturacion_trabajo", args=[self.solicitud.pk])
+        movimiento = self.solicitud.movimientos.create(autor=self.admin, estado=self.solicitud.estado)
+        respuesta = self.client.post(editar, {
+            "version": str(movimiento.pk), "factura_sap": self.solicitud.factura_sap,
+            "fecha_factura": self.hoy.isoformat(), "cobranza_aplica": "on",
+        })
+        self.assertContains(respuesta, "La fecha de emisión no puede quedar después")
+        self.accion.refresh_from_db()
+        self.assertIsNone(self.accion.realizada_el)
+        for texto in ("Cerrada en SAP", "Pendiente de cobro", "Reparación pendiente"):
+            self.assertContains(self.client.get(detalle), texto)
+        self.assertContains(self.client.get(reverse("facturacion_trabajo", args=[self.solicitud.pk])), detalle)
+
+    def test_visita_del_abono_registra_referencia_y_mantiene_pendientes(self):
+        visita = Visita.objects.create(cliente=self.cliente, fecha=self.hoy, hora_desde="09:00", hora_hasta="10:00")
+        visita.trabajos.add(self.accion)
+        url = reverse("llamada_sap_ticket", args=[self.ticket.pk])
+        respuesta = self.client.post(url, {"circuito": "abono", "referencia": "NS-ABONO", "visita": visita.pk})
+        llamada = LlamadaServicioSAP.objects.get()
+        detalle = reverse("llamada_sap", args=[llamada.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertContains(self.client.get(detalle), "Resultados de la visita")
+        self.assertContains(self.client.get(detalle), "Regla de cierre de visitas de abono pendiente de confirmar")
+        cerrar = reverse("cerrar_llamada_sap", args=[llamada.pk])
+        self.assertContains(self.client.post(cerrar, {"fecha": self.hoy.isoformat(), "confirmado": "on"}), "pendiente de confirmar")
+        llamada.refresh_from_db()
+        self.assertIsNone(llamada.cerrada_en_sap)
+
+    def test_referencia_unica_y_solo_administracion_registra_cierre(self):
+        self.client.post(self.alta, self.datos)
+        llamada = LlamadaServicioSAP.objects.get()
+        self.assertContains(self.client.post(self.alta, self.datos), "La llamada ya está registrada")
+        self.assertEqual(LlamadaServicioSAP.objects.count(), 1)
+        self.client.force_login(self.responsable)
+        self.assertContains(self.client.get(reverse("cierre_administrativo")), llamada.referencia)
+        self.assertEqual(self.client.post(reverse("cerrar_llamada_sap", args=[llamada.pk])).status_code, 403)
+        self.assertEqual(self.client.post(self.alta, self.datos).status_code, 403)
+
+
+class SeguimientoTicketTest(TestCase):
+    def setUp(self):
+        self.oficina = User.objects.create_user("oficina.seguimiento")
+        self.oficina.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.tecnico = User.objects.create_user("tecnico.seguimiento")
+        self.tecnico.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(self.oficina)
+        self.cliente = Cliente.objects.create(codigo="AB-71", nombre="Cliente ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.equipo = self.cliente.equipos.create(codigo="EQ-71", nombre="Generador ficticio")
+        self.ticket = Ticket.objects.create(
+            asunto="Seguimiento ficticio", cliente_ficha=self.cliente, equipo_ficha=self.equipo, creado_por=self.oficina,
+        )
+        self.previa = self.ticket.acciones.create(titulo="Revisar vibración", responsable=self.oficina)
+        self.paralela = self.ticket.acciones.create(titulo="Lavado incluido", responsable=self.tecnico)
+        self.alta = reverse("agregar", args=[self.ticket.pk])
+        self.datos = {"titulo": "Preparar presupuesto", "responsable": self.oficina.pk, "tipo": "tarea", "facturacion": "a_definir"}
+
+    def test_secuencia_y_accion_paralela_en_bandeja(self):
+        respuesta = self.client.post(self.alta, {
+            **self.datos, "proximo_paso": "Presupuestar el repuesto", "depende_de": self.previa.pk,
+        })
+        detalle = reverse("ticket", args=[self.ticket.pk])
+        self.assertRedirects(respuesta, detalle)
+        siguiente = self.ticket.acciones.get(titulo="Preparar presupuesto")
+        realizar = reverse("realizar", args=[siguiente.pk])
+        estado = reverse("cambiar_estado", args=[siguiente.pk])
+        tablero = reverse("pendientes")
+        filtro = {"q": "EQ-71", "responsable": self.oficina.pk}
+        self.assertContains(self.client.get(tablero, filtro), "Espera una acción previa")
+        self.assertNotContains(self.client.get(tablero, filtro), self.paralela.titulo)
+        self.assertEqual(self.client.post(realizar).status_code, 409)
+        self.assertContains(self.client.post(estado, {"estado": "en_curso"}), "Completá primero la acción previa")
+        self.client.force_login(self.tecnico)
+        self.assertRedirects(self.client.post(reverse("realizar", args=[self.paralela.pk])), reverse("inicio"))
+        self.client.force_login(self.oficina)
+        self.client.post(reverse("realizar", args=[self.previa.pk]))
+        self.assertContains(self.client.get(tablero, filtro), "Presupuestar el repuesto")
+        self.assertRedirects(self.client.post(realizar), detalle)
+        self.assertNotContains(self.client.get(tablero, filtro), siguiente.titulo)
+
+    def test_proximo_paso_documentos_visitas_y_permisos(self):
+        documento = self.cliente.documentos.create(tipo="Presupuesto", referencia="P-FICTICIO-71")
+        ajeno = Cliente.objects.create(codigo="TE-71", nombre="Otro cliente", tipo=Cliente.Tipo.TERCERO)
+        externo = ajeno.documentos.create(tipo="OC", referencia="OC-AJENA")
+        extra = Ticket.objects.create(asunto="Ticket ajeno", cliente_ficha=ajeno, creado_por=self.oficina)
+        otra_accion = extra.acciones.create(titulo="Otra acción", responsable=self.oficina)
+        respuesta = self.client.post(self.alta, {**self.datos, "depende_de": otra_accion.pk})
+        self.assertTrue(respuesta.context["form"].has_error("depende_de", "invalid_choice"))
+
+        vincular = reverse("documentos_ticket", args=[self.ticket.pk])
+        self.assertTrue(self.client.post(vincular, {"documentos": [externo.pk]}).context["form"].has_error("documentos"))
+        self.client.post(vincular, {"documentos": [documento.pk]})
+        visita = Visita.objects.create(cliente=self.cliente, fecha=date(2026, 11, 20), hora_desde="09:00", hora_hasta="11:00")
+        visita.trabajos.add(self.paralela)
+        detalle = reverse("ticket", args=[self.ticket.pk])
+        self.assertContains(self.client.get(detalle), documento.referencia)
+        self.assertContains(self.client.get(detalle), reverse("visita", args=[visita.pk]))
+
+        paso = reverse("proximo_paso_accion", args=[self.paralela.pk])
+        self.assertEqual(self.client.post(paso, {"proximo_paso": "Cargar fotos"}).status_code, 404)
+        self.client.force_login(self.tecnico)
+        self.assertRedirects(self.client.post(paso, {"proximo_paso": "Cargar fotos"}), reverse("inicio"))
+        self.assertEqual(self.paralela.cambios.get().proximo_paso, "Cargar fotos")
+        self.assertEqual(self.client.get(vincular).status_code, 403)
+        self.assertEqual(self.client.get(reverse("pendientes")).status_code, 403)
+
+
+class TiemposPorPuestoTest(TestCase):
+    def setUp(self):
+        self.oficina = User.objects.create_user("oficina.tiempos")
+        self.oficina.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.comercial = User.objects.create_user("comercial.tiempos")
+        self.comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(self.oficina)
+        cliente = Cliente.objects.create(codigo="AB-72", nombre="Cliente ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.ticket = Ticket.objects.create(asunto="Gestión de repuesto", cliente_ficha=cliente, creado_por=self.oficina)
+        self.inicio = timezone.now() - timedelta(days=1)
+
+    def post_en(self, hora, vista, datos=None):
+        with patch("django.utils.timezone.now", return_value=self.inicio + timedelta(hours=hora)):
+            return self.client.post(vista, datos or {})
+
+    def test_mide_pasadas_repetidas_y_esperas_sin_contarlas_dos_veces(self):
+        alta = reverse("agregar", args=[self.ticket.pk])
+        self.assertRedirects(self.post_en(0, alta, {
+            "titulo": "Pedir precio", "responsable": self.oficina.pk, "tipo": "tarea", "facturacion": "a_definir",
+        }), reverse("ticket", args=[self.ticket.pk]))
+        accion = self.ticket.acciones.get()
+        estado = reverse("cambiar_estado", args=[accion.pk])
+        derivar = reverse("derivar_accion", args=[accion.pk])
+        self.post_en(1, estado, {"estado": "en_curso"})
+        self.post_en(2, estado, {"estado": "en_espera", "motivo": "Falta precio", "categoria_espera": "compras"})
+        self.post_en(4, derivar, {"responsable": self.comercial.pk, "motivo": "Revisar con Comercial"})
+        self.client.force_login(self.comercial)
+        self.post_en(5, estado, {"estado": "en_espera", "motivo": "Falta respuesta", "categoria_espera": "cliente"})
+        self.post_en(7, derivar, {"responsable": self.oficina.pk, "motivo": "Volver a Administración"})
+        self.client.force_login(self.oficina)
+        self.post_en(8, estado, {"estado": "en_curso"})
+        realizar = reverse("realizar", args=[accion.pk])
+        self.post_en(9, realizar)
+        self.post_en(10, realizar)
+        detalle = reverse("tiempos_accion", args=[accion.pk])
+        respuesta = self.client.get(detalle)
+        pasadas = respuesta.context["pasadas"]
+        self.assertEqual([p["puesto"] for p in pasadas], [Rol.ADMINISTRACION, Rol.COMERCIAL, Rol.ADMINISTRACION])
+        self.assertEqual([p["total"] for p in pasadas], [timedelta(hours=4), timedelta(hours=3), timedelta(hours=2)])
+        totales = respuesta.context["totales"]
+        self.assertEqual(totales[Rol.ADMINISTRACION]["total"], timedelta(hours=6))
+        self.assertEqual(totales[Rol.ADMINISTRACION]["esperas"]["Compras"], timedelta(hours=2))
+        self.assertEqual(totales[Rol.COMERCIAL]["esperas"]["Cliente"], timedelta(hours=2))
+        self.assertEqual(accion.movimientos_tiempo.filter(tipo=MovimientoTiempoAccion.Tipo.FINALIZACION).count(), 1)
+        self.assertContains(respuesta, "Horas corridas")
+        self.assertContains(respuesta, "Espera de Compras")
+        self.assertContains(self.client.get(reverse("tiempos_por_puesto"), {"q": f"T-{self.ticket.pk}"}), detalle)
+
+    def test_accion_anterior_mide_desde_primer_evento_y_protege_permisos(self):
+        accion = self.ticket.acciones.create(titulo="Acción previa", responsable=self.oficina)
+        detalle = reverse("tiempos_accion", args=[accion.pk])
+        self.assertContains(self.client.get(detalle), "todavía no tiene movimientos")
+        estado = reverse("cambiar_estado", args=[accion.pk])
+        self.post_en(0, estado, {"estado": "en_espera", "motivo": "Falta la OC", "categoria_espera": "documentacion"})
+        with patch("django.utils.timezone.now", return_value=self.inicio + timedelta(hours=3)):
+            respuesta = self.client.get(detalle)
+        self.assertTrue(respuesta.context["registro_parcial"])
+        self.assertEqual(respuesta.context["pasadas"][0]["esperas"], {"Documentación": timedelta(hours=3)})
+        campo = User.objects.create_user("campo.tiempos")
+        campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(campo)
+        self.assertEqual(self.client.get(detalle).status_code, 403)
+        self.assertEqual(self.client.post(reverse("derivar_accion", args=[accion.pk])).status_code, 403)
+
+
+class RecordatoriosAvisosTest(TestCase):
+    def setUp(self):
+        self.oficina = User.objects.create_user("oficina.avisos")
+        self.oficina.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.coordinacion = User.objects.create_user("coordinacion.avisos")
+        self.coordinacion.groups.add(Group.objects.create(name=Rol.COORDINACION))
+        campo = Group.objects.get(name=Rol.CAMPO)
+        self.tecnico = User.objects.create_user("campo.avisos")
+        self.ajeno = User.objects.create_user("ajeno.avisos")
+        campo.user_set.add(self.tecnico, self.ajeno)
+        self.cliente = Cliente.objects.create(codigo="AB-73", nombre="Cliente ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.planta = self.cliente.plantas.create(codigo="P-73", nombre="Planta ficticia")
+        self.ticket = Ticket.objects.create(
+            asunto="Servicio ficticio", cliente_ficha=self.cliente, planta_ficha=self.planta, creado_por=self.oficina,
+        )
+        self.trabajo = self.ticket.acciones.create(titulo="Lavar generador", responsable=self.tecnico)
+        self.hoy = timezone.localdate()
+        self.client.force_login(self.oficina)
+
+    def test_fecha_destinatarios_y_atencion(self):
+        fecha = self.hoy + timedelta(days=1)
+        datos = {
+            "titulo": "Seguir demora de Compras", "tipo": "demora", "disparador": "fecha", "fecha": fecha.isoformat(),
+            "responsable": self.tecnico.pk, "destinatarios": [self.coordinacion.pk],
+        }
+        self.client.post(reverse("nuevo_recordatorio"), datos)
+        aviso = AvisoOperativo.objects.get()
+        detalle = reverse("aviso_operativo", args=[aviso.pk])
+        gestionar = reverse("gestionar_aviso", args=[aviso.pk])
+        bandeja = reverse("avisos_operativos")
+        self.client.force_login(self.tecnico)
+        self.assertNotContains(self.client.get(bandeja), datos["titulo"])
+        self.assertEqual(self.client.post(gestionar, {"operacion": "tomar"}).status_code, 404)
+        with patch("django.utils.timezone.localdate", return_value=fecha):
+            self.assertContains(self.client.get(bandeja), detalle)
+            self.client.force_login(self.ajeno)
+            self.assertEqual(self.client.get(detalle).status_code, 404)
+            self.client.force_login(self.tecnico)
+            self.assertRedirects(self.client.post(gestionar, {"operacion": "tomar"}), detalle)
+            self.client.force_login(self.coordinacion)
+            self.client.post(gestionar, {"operacion": "tomar"})
+            self.client.post(gestionar, {"operacion": "resolver"})
+            aviso.refresh_from_db()
+            self.assertEqual(aviso.atendido_por, self.tecnico)
+            self.assertIsNone(aviso.resuelto_el)
+            self.client.force_login(self.tecnico)
+            self.client.post(gestionar, {"operacion": "resolver"})
+            self.assertContains(self.client.get(detalle), "Resuelto por")
+        self.client.force_login(self.oficina)
+        editar = reverse("destinatarios_aviso", args=[aviso.pk])
+        self.client.post(editar, {"destinatarios": [self.ajeno.pk]})
+        self.assertTrue(aviso.recepciones.get(destinatario=self.tecnico).activo)
+        self.assertFalse(aviso.recepciones.get(destinatario=self.coordinacion).activo)
+        self.assertIsNotNone(aviso.recepciones.get(destinatario=self.tecnico).visto_el)
+
+    def test_proxima_visita_espera_programacion_y_sigue_reprogramacion(self):
+        url = reverse("recordatorio_ticket", args=[self.ticket.pk])
+        datos = {
+            "titulo": "Lavar en próxima visita", "tipo": "seguimiento", "disparador": "proxima_visita",
+            "responsable": self.tecnico.pk,
+        }
+        self.assertTrue(self.client.post(reverse("nuevo_recordatorio"), datos).context["form"].has_error("disparador"))
+        self.client.post(url, datos)
+        recordatorio = Recordatorio.objects.get()
+        self.assertIsNone(recordatorio.visita_id)
+        self.client.force_login(self.coordinacion)
+        fecha = self.hoy + timedelta(days=3)
+        self.client.post(reverse("visita_cliente", args=[self.cliente.pk]), {
+            "planta": self.planta.pk, "fecha": fecha.isoformat(), "hora_desde": "09:00", "hora_hasta": "11:00",
+            "tecnicos": [self.tecnico.pk], "trabajos": [self.trabajo.pk],
+        })
+        recordatorio.refresh_from_db()
+        self.assertEqual(recordatorio.fecha_activacion, fecha)
+        nueva_fecha = fecha + timedelta(days=2)
+        self.client.post(reverse("reprogramar_visita", args=[recordatorio.visita_id]), {
+            "fecha": nueva_fecha.isoformat(), "hora_desde": "09:00", "hora_hasta": "11:00", "motivo": "Cambio ficticio",
+        })
+        recordatorio.refresh_from_db()
+        self.assertEqual(recordatorio.fecha_activacion, nueva_fecha)
+        self.assertEqual(AvisoOperativo.objects.count(), 1)
+
+    def test_novedad_de_campo_entra_a_bandeja_de_coordinacion(self):
+        self.client.force_login(self.tecnico)
+        self.client.post(reverse("nueva_alerta"), {"detalle": "Vibración ficticia", "accion": self.trabajo.pk})
+        aviso = AvisoOperativo.objects.get()
+        self.assertIsNotNone(aviso.alerta_campo_id)
+        self.assertEqual(list(aviso.recepciones.values_list("destinatario_id", flat=True)), [self.coordinacion.pk])
+        self.client.force_login(self.coordinacion)
+        self.assertContains(self.client.get(reverse("avisos_operativos")), "Vibración ficticia")
+        detalle = reverse("aviso_operativo", args=[aviso.pk])
+        self.assertContains(self.client.get(detalle), "Tomar aviso")
+
+
+class TableroGerenciaTest(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("oficina.tablero")
+        self.admin.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.coordinacion = User.objects.create_user("coordinacion.tablero")
+        self.coordinacion.groups.add(Group.objects.create(name=Rol.COORDINACION))
+        self.campo = User.objects.create_user("campo.tablero")
+        self.campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.cliente = Cliente.objects.create(codigo="AB-74", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.hoy = timezone.localdate()
+        self.canal = self.cliente.contratos_abono.create(
+            referencia="AB-74", vigente_desde=self.hoy - timedelta(days=60),
+            alcance="Control preventivo", frecuencia="Mensual", valor=500, moneda="ARS",
+        )
+        self.ticket = Ticket.objects.create(asunto="Trabajo para tablero", cliente_ficha=self.cliente, creado_por=self.admin)
+        self.accion = self.ticket.acciones.create(titulo="Inspección demorada", responsable=self.campo)
+        self.client.force_login(self.admin)
+
+    def test_indicadores_y_drilldown_con_los_mismos_casos(self):
+        sin_acciones = Ticket.objects.create(asunto="Pendiente de asignación", cliente_ficha=self.cliente, creado_por=self.admin)
+        pedido = self.ticket.pedidos_servicio.create(alcance="Revisión", estado=PedidoServicio.Estado.ENVIADO)
+        self.ticket.pedidos_servicio.create(alcance="Venta", estado=PedidoServicio.Estado.ENVIADO, tipo="repuestos")
+        solicitud = self.ticket.solicitudes_facturacion.create(
+            solicitante=self.admin, modalidad="posterior", estado="facturada", documentacion_faltante="Falta el informe.",
+        )
+        control = self.cliente.facturacion_mensual.create(
+            periodo=self.hoy.replace(day=1), contrato=self.canal, actualizado_por=self.admin, requiere_oc=True,
+        )
+        destino = reverse("recordatorio_ticket", args=[self.ticket.pk])
+        ayer = (self.hoy - timedelta(days=1)).isoformat()
+        for titulo in ("Control de plazo", "Segundo aviso"):
+            self.client.post(destino, {
+                "titulo": titulo, "tipo": "demora", "disparador": "fecha", "fecha": ayer,
+                "responsable": self.admin.pk, "accion": self.accion.pk,
+            })
+        tablero = self.client.get(reverse("tablero_gerencia"))
+        esperados = {
+            "sin_asignar": reverse("ticket", args=[sin_acciones.pk]), "sin_fecha": reverse("pedido_servicio", args=[pedido.pk]),
+            "abonos": reverse("facturacion_abono_mes", args=[control.periodo.strftime("%Y-%m"), self.cliente.pk]),
+            "documentos_trabajos": reverse("facturacion_trabajo", args=[solicitud.pk]),
+            "documentos_abonos": reverse("facturacion_abono_mes", args=[control.periodo.strftime("%Y-%m"), self.cliente.pk]),
+        }
+        for indicador, enlace in esperados.items():
+            listado = self.client.get(reverse("tablero_casos", args=[indicador]))
+            self.assertContains(listado, enlace)
+            self.assertEqual(listado.context["pagina"].paginator.count, 1)
+        self.assertEqual({clave: total for clave, _, total in tablero.context["indicadores"]}, dict.fromkeys(esperados, 1))
+        self.assertEqual(tablero.context["demoras"], [(Rol.CAMPO, 1)])
+        listado = self.client.get(reverse("tablero_casos", args=["demoras"]), {"puesto": Rol.CAMPO})
+        self.assertContains(listado, self.accion.titulo)
+
+    def test_carga_dia_pantalla_y_permisos(self):
+        visita = Visita.objects.create(cliente=self.cliente, fecha=self.hoy, hora_desde="09:00", hora_hasta="10:30")
+        visita.tecnicos.add(self.campo)
+        visita.trabajos.add(self.accion)
+        campo2 = User.objects.create_user("campo2.tablero")
+        campo2.groups.add(Group.objects.get(name=Rol.CAMPO))
+        visita.tecnicos.add(campo2)
+        activa = AlertaCampo.objects.create(autor=self.campo, detalle="Novedad visible")
+        AvisoOperativo.objects.create(alerta_campo=activa)
+        resuelta = AlertaCampo.objects.create(autor=self.campo, detalle="Novedad ya resuelta")
+        AvisoOperativo.objects.create(alerta_campo=resuelta, resuelto_el=timezone.now())
+        pantalla = reverse("pantalla_oficina")
+        tablero = self.client.get(reverse("tablero_gerencia"))
+        self.assertEqual([item["duracion"] for item in tablero.context["carga"]], [timedelta(minutes=90)] * 2)
+        respuesta = self.client.get(reverse("tablero_casos", args=["carga"]), {"tecnico": self.campo.pk})
+        self.assertContains(respuesta, reverse("visita", args=[visita.pk]))
+        self.client.force_login(self.coordinacion)
+        respuesta = self.client.get(pantalla)
+        self.assertContains(respuesta, "Novedad visible")
+        self.assertNotContains(respuesta, "Novedad ya resuelta")
+        self.assertContains(respuesta, self.accion.titulo)
+        self.assertContains(respuesta, 'http-equiv="refresh" content="60"')
+        self.assertEqual(self.client.get(reverse("tablero_gerencia")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("tablero_casos", args=["abonos"])).status_code, 403)
+        self.client.force_login(self.campo)
+        self.assertEqual(self.client.get(pantalla).status_code, 403)

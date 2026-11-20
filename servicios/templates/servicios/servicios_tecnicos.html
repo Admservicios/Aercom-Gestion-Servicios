@@ -1,6 +1,8 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>{% if es_oficina %}Servicios de técnicos{% else %}Mis visitas{% endif %}</h1>
+{% if es_oficina %}
+  {% include "servicios/encabezado_oficina.html" with titulo="Servicios de técnicos" only %}
+{% else %}<h1>Mis visitas</h1>{% endif %}
 {% for visita in pagina %}
 <article>
   <h2><a href="{% url 'servicio_visita' visita.pk %}">{{ visita.cliente.nombre }} · V-{{ visita.pk }}</a></h2>

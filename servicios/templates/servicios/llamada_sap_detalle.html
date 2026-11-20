@@ -1,0 +1,51 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'cierre_administrativo' %}">Volver a cierre administrativo</a></p>
+<p class="contexto">{{ llamada.get_circuito_display }}</p>
+<h1>Llamada SAP {{ llamada.referencia }}</h1>
+<p><a href="{% url 'cliente' llamada.cliente_id %}">{{ llamada.cliente.nombre }}</a>
+· <a href="{% url 'ticket' llamada.ticket_id %}">Ticket T-{{ llamada.ticket_id }}</a>
+{% if llamada.visita_id %} · <a href="{% url 'servicio_visita' llamada.visita_id %}">Resultados de la visita V-{{ llamada.visita_id }}</a>{% endif %}</p>
+{{ llamada.observaciones|linebreaks }}
+<article>
+  <h2>Ejecución</h2>
+  <ul>{% for trabajo in trabajos %}
+    <li><a href="{% url 'ticket' trabajo.ticket_id %}#accion-{{ trabajo.pk }}">{{ trabajo.titulo }}</a> · {{ trabajo.get_estado_display }}</li>
+  {% empty %}<li>Sin trabajos registrados para mostrar.</li>{% endfor %}</ul>
+</article>
+<article>
+  <h2>Facturación</h2>
+  <ul>{% for item in facturas %}
+    <li><a href="{% url 'facturacion_trabajo' item.pk %}">SF-{{ item.pk }}</a> · {{ item.get_estado_display }}
+    {% if item.factura_sap %} · {{ item.factura_sap }} · {{ item.fecha_factura|date:"d/m/Y" }}{% endif %}</li>
+  {% empty %}<li>Sin solicitudes de facturación vinculadas.</li>{% endfor %}</ul>
+</article>
+<article>
+  <h2>Cobranza</h2>
+  <ul>{% for item in facturas %}
+    <li>SF-{{ item.pk }} · {{ item.estado_cobranza }}
+    {% if item.fecha_cobro %} · {{ item.fecha_cobro|date:"d/m/Y" }} · {{ item.referencia_cobro }}{% endif %}</li>
+  {% empty %}<li>Sin solicitudes de facturación vinculadas.</li>{% endfor %}</ul>
+</article>
+<article>
+  <h2>Cierre en SAP</h2>
+  {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+  {% if llamada.cerrada_en_sap %}
+  <p><strong>Cerrada en SAP</strong> el {{ llamada.cerrada_en_sap|date:"d/m/Y" }}.</p>
+  <p>Registrado por {{ llamada.cierre_registrado_por.get_full_name|default:llamada.cierre_registrado_por.username }}
+    el {{ llamada.cierre_registrado_el|date:"d/m/Y H:i" }}.</p>
+  {{ llamada.observacion_cierre|linebreaks }}
+  <p>Facturas al momento del cierre:</p>{{ llamada.respaldo_facturas|linebreaks }}
+  {% elif llamada.circuito == "abono" %}
+  <p>Regla de cierre de visitas de abono pendiente de confirmar. La referencia ya está disponible para seguimiento.</p>
+  {% elif not facturacion_completa %}
+  <p>Pendiente de registrar la emisión en SAP de las facturas vinculadas.</p>
+  {% elif puede_registrar_cierre_sap %}
+  <form method="post" action="{% url 'cerrar_llamada_sap' llamada.pk %}">
+    {% csrf_token %}{{ form.as_p }}<button>Asentar cierre en SAP</button>
+  </form>
+  {% else %}
+  <p>Sin cierre registrado.</p>
+  {% endif %}
+</article>
+{% endblock %}

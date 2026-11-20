@@ -1,0 +1,17 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+{% include "servicios/encabezado_oficina.html" with titulo="Cierre administrativo" only %}
+{% if puede_registrar_cierre_sap %}<p>Para registrar una llamada de SAP, abrí su ticket o solicitud de facturación.</p>{% endif %}
+<article>
+  <form method="get">
+    <label for="q">Buscar por llamada SAP, cliente o asunto</label>
+    <input id="q" name="q" value="{{ consulta }}">
+    <button>Buscar</button>
+  </form>
+  <ul>{% for llamada in pagina %}
+    <li><a href="{% url 'llamada_sap' llamada.pk %}">{{ llamada.referencia }}</a> · {{ llamada.cliente.nombre }}
+      · {{ llamada.get_circuito_display }} · {% if llamada.cerrada_en_sap %}Cerrada en SAP{% else %}Sin cierre registrado{% endif %}</li>
+  {% empty %}<li>Sin llamadas de servicio para mostrar.</li>{% endfor %}</ul>
+  {% include "servicios/paginacion.html" %}
+</article>
+{% endblock %}

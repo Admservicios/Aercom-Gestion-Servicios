@@ -41,6 +41,13 @@
   <p>{{ solicitud.estado_cobranza }}{% if solicitud.fecha_cobro %} · {{ solicitud.fecha_cobro|date:"d/m/Y" }} · {{ solicitud.referencia_cobro }}{% endif %}</p>
 </article>
 {% endif %}
+{% if puede_facturar_abonos %}
+<article>
+  <h2>Llamadas de servicio SAP</h2>
+  {% if puede_registrar_cierre_sap %}<p><a href="{% url 'llamada_sap_facturacion' solicitud.pk %}">Vincular llamada SAP</a></p>{% endif %}
+  {% include "servicios/llamadas_sap_vinculadas.html" with llamadas=solicitud.llamadas_sap.all %}
+</article>
+{% endif %}
 <article>
   <h2>Historial</h2>
   <ul>{% for cambio in solicitud.movimientos.all %}

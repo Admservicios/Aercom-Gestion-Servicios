@@ -1,0 +1,16 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+{% if es_oficina %}
+  {% url 'alertas' as alertas_campo %}
+  {% include "servicios/encabezado_oficina.html" with titulo="Mis avisos" accion_url=alertas_campo accion_texto="Alertas de campo" only %}
+{% else %}<h1>Mis avisos</h1>{% endif %}
+{% for recepcion in pagina %}
+<article>
+  <h2><a href="{% url 'aviso_operativo' recepcion.aviso_id %}">{{ recepcion.aviso.titulo }}</a></h2>
+  <p>{% if recepcion.aviso.resuelto_el %}Resuelto{% elif recepcion.aviso.atendido_por_id %}En atención{% else %}Pendiente de atención{% endif %}
+    · {% if recepcion.visto_el %}Visto{% else %}Sin ver{% endif %}</p>
+  {% if recepcion.aviso.alerta_campo_id %}<p>{{ recepcion.aviso.alerta_campo.detalle|truncatechars:160 }}</p>{% endif %}
+</article>
+{% empty %}<p>Sin avisos disponibles.</p>{% endfor %}
+{% include "servicios/paginacion.html" %}
+{% endblock %}

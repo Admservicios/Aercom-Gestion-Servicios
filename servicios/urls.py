@@ -1,6 +1,6 @@
 from django.contrib.auth import views as auth
 from django.urls import path
-from . import abonos, agenda, alertas, campo_servicios, catalogo, cotizaciones, facturacion_abonos, facturacion_trabajos, mantenimiento, pedidos, precios, solicitudes, views
+from . import abonos, agenda, alertas, campo_servicios, catalogo, cierres, cotizaciones, facturacion_abonos, facturacion_trabajos, mantenimiento, pedidos, precios, recordatorios, seguimiento, solicitudes, tablero, tiempos, views
 
 urlpatterns = [
     path("", views.inicio, name="inicio"),
@@ -26,6 +26,22 @@ urlpatterns = [
     path("equipos/<int:pk>/mantenimiento/nuevo/", mantenimiento.nuevo_registro, name="nuevo_mantenimiento"),
     path("alertas/", alertas.alertas, name="alertas"),
     path("alertas/nueva/", alertas.nueva_alerta, name="nueva_alerta"),
+    path("gerencia/", tablero.inicio, name="tablero_gerencia"),
+    path("gerencia/casos/<str:indicador>/", tablero.casos, name="tablero_casos"),
+    path("pantalla-oficina/", tablero.pantalla, name="pantalla_oficina"),
+    path("tiempos-por-puesto/", tiempos.lista, name="tiempos_por_puesto"),
+    path("acciones/<int:pk>/tiempos/", tiempos.detalle, name="tiempos_accion"),
+    path("acciones/<int:pk>/derivar/", tiempos.derivar, name="derivar_accion"),
+    path("recordatorios/", recordatorios.lista, name="recordatorios"),
+    path("recordatorios/nuevo/", recordatorios.nuevo, name="nuevo_recordatorio"),
+    path("tickets/<int:ticket_id>/recordatorios/nuevo/", recordatorios.nuevo, name="recordatorio_ticket"),
+    path("avisos/", recordatorios.avisos, name="avisos_operativos"),
+    path("avisos/<int:pk>/", recordatorios.detalle, name="aviso_operativo"),
+    path("avisos/<int:pk>/destinatarios/", recordatorios.destinatarios, name="destinatarios_aviso"),
+    path("avisos/<int:pk>/gestionar/", recordatorios.gestionar, name="gestionar_aviso"),
+    path("pendientes/", seguimiento.pendientes, name="pendientes"),
+    path("tickets/<int:pk>/documentos/", seguimiento.documentos_ticket, name="documentos_ticket"),
+    path("acciones/<int:pk>/proximo-paso/", seguimiento.proximo_paso, name="proximo_paso_accion"),
     path("tickets/", views.tickets, name="tickets"),
     path("solicitudes-cotizacion/", solicitudes.lista, name="solicitudes_cotizacion"),
     path("solicitudes-cotizacion/<int:pk>/", solicitudes.detalle, name="solicitud_cotizacion"),
@@ -44,6 +60,11 @@ urlpatterns = [
     path("solicitudes-precios/<int:anterior_id>/actualizar/", precios.nueva, name="actualizar_solicitud_precio"),
     path("cotizaciones/<int:cotizacion_id>/precios/nueva/", precios.nueva, name="precio_cotizacion"),
     path("repuestos/<int:repuesto_id>/precios/nueva/", precios.nueva, name="precio_repuesto"),
+    path("cierre-administrativo/", cierres.lista, name="cierre_administrativo"),
+    path("cierre-administrativo/<int:pk>/", cierres.detalle, name="llamada_sap"),
+    path("cierre-administrativo/<int:pk>/registrar-cierre/", cierres.cerrar, name="cerrar_llamada_sap"),
+    path("tickets/<int:ticket_id>/llamadas-sap/nueva/", cierres.nueva, name="llamada_sap_ticket"),
+    path("facturacion-trabajos/<int:solicitud_id>/llamadas-sap/nueva/", cierres.nueva, name="llamada_sap_facturacion"),
     path("facturacion-trabajos/", facturacion_trabajos.lista, name="facturacion_trabajos"),
     path("facturacion-trabajos/<int:pk>/", facturacion_trabajos.detalle, name="facturacion_trabajo"),
     path("facturacion-trabajos/<int:pk>/actualizar/", facturacion_trabajos.gestionar, name="actualizar_facturacion_trabajo"),

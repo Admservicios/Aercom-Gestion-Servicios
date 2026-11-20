@@ -208,6 +208,7 @@ class Ticket(models.Model):
     equipo_ficha = models.ForeignKey(
         Equipo, on_delete=models.PROTECT, related_name="tickets", null=True, blank=True,
     )
+    documentos = models.ManyToManyField(DocumentoCliente, related_name="tickets", blank=True)
     detalle = models.TextField(blank=True)
     creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     creado_el = models.DateTimeField(auto_now_add=True)
@@ -236,6 +237,13 @@ class Ticket(models.Model):
             raise ValidationError(errores)
 
 
+class CategoriaEspera(models.TextChoices):
+    CLIENTE = "cliente", "Cliente"
+    COMPRAS = "compras", "Compras"
+    DOCUMENTACION = "documentacion", "Documentación"
+    OTRA = "otra", "Otra espera"
+
+
 class Accion(models.Model):
     class Estado(models.TextChoices):
         ASIGNADA = "asignada", "Asignada"
@@ -258,6 +266,14 @@ class Accion(models.Model):
     facturacion = models.CharField(max_length=16, choices=Facturacion, default=Facturacion.A_DEFINIR)
     estado = models.CharField(max_length=16, choices=Estado, default=Estado.ASIGNADA)
     motivo_espera = models.CharField(max_length=240, blank=True)
+    categoria_espera = models.CharField(
+        "Motivo de espera", max_length=16, choices=CategoriaEspera, blank=True,
+    )
+    proximo_paso = models.CharField("Próximo paso", max_length=240, blank=True)
+    depende_de = models.ForeignKey(
+        "self", on_delete=models.RESTRICT, null=True, blank=True, related_name="acciones_siguientes",
+        verbose_name="Acción previa",
+    )
     asignada_por = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
         null=True, blank=True, related_name="acciones_asignadas",
@@ -274,6 +290,22 @@ class Accion(models.Model):
         null=True, blank=True, related_name="acciones_realizadas",
     )
 
+    def clean(self):
+        if self.depende_de_id and self.depende_de.ticket_id != self.ticket_id:
+            raise ValidationError({"depende_de": "La acción previa debe pertenecer al mismo ticket."})
+
+    @property
+    def bloqueada_por_previa(self):
+        return self.depende_de_id is not None and self.depende_de.realizada_el is None
+
+    @property
+    def siguiente_paso(self):
+        if self.realizada_el:
+            return "Acción realizada"
+        if self.bloqueada_por_previa:
+            return f"Esperar que se complete «{self.depende_de.titulo}»"
+        return self.proximo_paso or self.motivo_espera or "Por definir"
+
 
 class CambioAccion(models.Model):
     accion = models.ForeignKey(Accion, on_delete=models.CASCADE, related_name="cambios")
@@ -281,6 +313,7 @@ class CambioAccion(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
     estado = models.CharField(max_length=16, choices=Accion.Estado)
     motivo = models.CharField(max_length=240, blank=True)
+    proximo_paso = models.CharField(max_length=240, blank=True, null=True)
 
     class Meta:
         ordering = ("pk",)
@@ -758,3 +791,135 @@ class MovimientoFacturacionTrabajo(models.Model):
 
     class Meta:
         ordering = ("-pk",)
+
+
+class LlamadaServicioSAP(models.Model):
+    class Circuito(models.TextChoices):
+        PUNTUAL = "puntual", "Trabajo facturado por separado"
+        ABONO = "abono", "Visita de abono"
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="llamadas_sap")
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="llamadas_sap")
+    visita = models.ForeignKey(Visita, on_delete=models.PROTECT, blank=True, null=True, related_name="llamadas_sap")
+    facturaciones = models.ManyToManyField(SolicitudFacturacionTrabajo, blank=True, related_name="llamadas_sap")
+    referencia = models.CharField("Número o referencia de llamada en SAP", max_length=100)
+    circuito = models.CharField(max_length=10, choices=Circuito)
+    observaciones = models.TextField(blank=True)
+    registrada_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    registrada_el = models.DateTimeField(auto_now_add=True)
+    cerrada_en_sap = models.DateField("Fecha efectiva del cierre en SAP", blank=True, null=True)
+    cierre_registrado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, blank=True, null=True, related_name="+",
+    )
+    cierre_registrado_el = models.DateTimeField(blank=True, null=True)
+    observacion_cierre = models.TextField("Observación del cierre", blank=True)
+    respaldo_facturas = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("-pk",)
+        constraints = [
+            models.UniqueConstraint(fields=("cliente", "referencia"), name="llamada_sap_unica_por_cliente"),
+        ]
+
+
+class MovimientoTiempoAccion(models.Model):
+    class Tipo(models.TextChoices):
+        ASIGNACION = "asignacion", "Asignada"
+        TOMA = "toma", "Tomada o retomada"
+        ESPERA = "espera", "En espera"
+        DERIVACION = "derivacion", "Derivada"
+        FINALIZACION = "finalizacion", "Completada"
+
+    accion = models.ForeignKey(Accion, on_delete=models.CASCADE, related_name="movimientos_tiempo")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    puesto = models.CharField(max_length=70)
+    tipo = models.CharField(max_length=12, choices=Tipo)
+    categoria_espera = models.CharField(max_length=16, choices=CategoriaEspera, blank=True)
+    motivo = models.CharField(max_length=240, blank=True)
+    ocurrio_el = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ("ocurrio_el", "pk")
+        indexes = [models.Index(fields=("accion", "ocurrio_el"), name="tiempo_accion_fecha")]
+
+
+class Recordatorio(models.Model):
+    class Tipo(models.TextChoices):
+        SEGUIMIENTO = "seguimiento", "Seguimiento"
+        VENCIMIENTO = "vencimiento", "Vencimiento"
+        DEMORA = "demora", "Demora"
+
+    class Disparador(models.TextChoices):
+        FECHA = "fecha", "Por fecha"
+        PROXIMA_VISITA = "proxima_visita", "En la próxima visita"
+
+    titulo = models.CharField("Título", max_length=160)
+    detalle = models.TextField(blank=True)
+    tipo = models.CharField(max_length=12, choices=Tipo, default=Tipo.SEGUIMIENTO)
+    disparador = models.CharField(max_length=14, choices=Disparador)
+    fecha = models.DateField(blank=True, null=True)
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, null=True, blank=True, related_name="recordatorios")
+    accion = models.ForeignKey(
+        Accion, on_delete=models.PROTECT, null=True, blank=True, related_name="recordatorios",
+    )
+    visita = models.ForeignKey(Visita, on_delete=models.PROTECT, null=True, blank=True, related_name="recordatorios")
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    creado_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(disparador="fecha", fecha__isnull=False, visita__isnull=True)
+                    | models.Q(disparador="proxima_visita", fecha__isnull=True, ticket__isnull=False)
+                ),
+                name="recordatorio_disparador_valido",
+            ),
+        ]
+
+    @property
+    def fecha_activacion(self):
+        return self.visita.fecha if self.visita_id else self.fecha
+
+
+class AvisoOperativo(models.Model):
+    recordatorio = models.OneToOneField(
+        Recordatorio, on_delete=models.PROTECT, blank=True, null=True, related_name="aviso",
+    )
+    alerta_campo = models.OneToOneField(
+        AlertaCampo, on_delete=models.PROTECT, blank=True, null=True, related_name="aviso",
+    )
+    atendido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, blank=True, null=True, related_name="+",
+    )
+    atendido_el = models.DateTimeField(blank=True, null=True)
+    resuelto_el = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ("-pk",)
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(recordatorio__isnull=False, alerta_campo__isnull=True)
+                | models.Q(recordatorio__isnull=True, alerta_campo__isnull=False),
+                name="aviso_origen_unico",
+            ),
+        ]
+
+    @property
+    def titulo(self):
+        return self.recordatorio.titulo if self.recordatorio_id else "Novedad de Campo"
+
+
+class RecepcionAviso(models.Model):
+    aviso = models.ForeignKey(AvisoOperativo, on_delete=models.CASCADE, related_name="recepciones")
+    destinatario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="avisos_recibidos")
+    activo = models.BooleanField(default=True)
+    visto_el = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("aviso", "destinatario"), name="aviso_destinatario_unico"),
+        ]

@@ -1,0 +1,45 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'avisos_operativos' %}">Volver a mis avisos</a>{% if es_oficina and aviso.recordatorio_id %} · <a href="{% url 'recordatorios' %}">Ver recordatorios</a>{% endif %}</p>
+<h1>{{ aviso.titulo }}</h1>
+{% if aviso.recordatorio_id %}
+{% with recordatorio=aviso.recordatorio %}
+<p>{{ recordatorio.get_tipo_display }} · Responsable: {{ recordatorio.responsable.get_full_name|default:recordatorio.responsable.username }}</p>
+{% if recordatorio.fecha_activacion %}<p>Fecha del aviso: {{ recordatorio.fecha_activacion|date:"d/m/Y" }}</p>{% else %}<p>A la espera de la próxima visita.</p>{% endif %}
+{{ recordatorio.detalle|linebreaks }}
+{% if es_oficina and recordatorio.ticket_id %}<p><a href="{% url 'ticket' recordatorio.ticket_id %}">Ticket T-{{ recordatorio.ticket_id }}</a></p>{% endif %}
+{% if es_oficina and recordatorio.accion_id %}<p><a href="{% url 'ticket' recordatorio.ticket_id %}#accion-{{ recordatorio.accion_id }}">{{ recordatorio.accion.titulo }}</a></p>{% endif %}
+{% if es_oficina and recordatorio.visita_id %}<p><a href="{% url 'visita' recordatorio.visita_id %}">Visita V-{{ recordatorio.visita_id }}</a></p>{% endif %}
+{% endwith %}
+{% else %}
+<p>Informó {{ aviso.alerta_campo.autor.get_full_name|default:aviso.alerta_campo.autor.username }} · {{ aviso.alerta_campo.creada_el|date:"d/m/Y H:i" }}</p>
+{{ aviso.alerta_campo.detalle|linebreaks }}
+{% endif %}
+<article>
+  <h2>Atención</h2>
+  {% if aviso.resuelto_el %}<p>Resuelto por {{ aviso.atendido_por.get_full_name|default:aviso.atendido_por.username }} · {{ aviso.resuelto_el|date:"d/m/Y H:i" }}</p>
+  {% elif aviso.atendido_por_id %}<p>En atención por {{ aviso.atendido_por.get_full_name|default:aviso.atendido_por.username }} · {{ aviso.atendido_el|date:"d/m/Y H:i" }}</p>
+  {% elif disponible %}<p>Pendiente de atención.</p>
+  {% else %}<p>Aviso programado.</p>{% endif %}
+  {% if propia and disponible %}
+  <form method="post" action="{% url 'gestionar_aviso' aviso.pk %}">
+    {% csrf_token %}
+    {% if not propia.visto_el %}<button name="operacion" value="visto">Marcar como visto</button>{% endif %}
+    {% if not aviso.atendido_por_id %}<button name="operacion" value="tomar">Tomar aviso</button>
+    {% elif aviso.atendido_por_id == user.pk and not aviso.resuelto_el %}<button name="operacion" value="resolver">Marcar como resuelto</button>{% endif %}
+  </form>
+  {% endif %}
+</article>
+{% if es_oficina %}
+<article>
+  <h2>Destinatarios del aviso</h2>
+  <p><a href="{% url 'destinatarios_aviso' aviso.pk %}">Editar destinatarios</a></p>
+  <ul>{% for recepcion in recepciones %}
+    <li>{{ recepcion.destinatario.get_full_name|default:recepcion.destinatario.username }}
+      {% if not recepcion.activo %} · Retirado{% endif %}
+      {% if recepcion.visto_el %} · Visto el {{ recepcion.visto_el|date:"d/m/Y H:i" }}
+      {% elif recepcion.activo %} · {% if disponible %}Disponible en bandeja{% else %}Programado{% endif %}{% endif %}</li>
+  {% empty %}<li>Sin destinatarios registrados.</li>{% endfor %}</ul>
+</article>
+{% endif %}
+{% endblock %}

@@ -1,6 +1,6 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>Facturación mensual de abonos</h1>
+{% include "servicios/encabezado_oficina.html" with titulo="Facturación mensual de abonos" only %}
 <article><form method="get">{{ form.as_p }}<button>Consultar período</button></form></article>
 {% for cliente in pagina %}
 {% with control=cliente.control_del_mes.0 %}

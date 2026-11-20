@@ -1,7 +1,7 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>Solicitudes de precios</h1>
-<p><a class="boton" href="{% url 'nueva_solicitud_precio' %}">Registrar solicitud de precio</a></p>
+{% url 'nueva_solicitud_precio' as nuevo_precio %}
+{% include "servicios/encabezado_oficina.html" with titulo="Solicitudes de precios" accion_url=nuevo_precio accion_texto="Registrar solicitud de precio" only %}
 <article>
   <form method="get">
     <label for="q">Buscar por código o descripción</label>
