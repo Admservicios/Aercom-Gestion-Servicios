@@ -1,0 +1,35 @@
+{% extends "servicios/base.html" %}
+{% block titulo %}Vista previa de importación · Aercom Servicios{% endblock %}
+{% block contenido %}
+{% include "servicios/encabezado_oficina.html" with titulo="Vista previa de importación" descripcion="Contratos y equipos de Industrias Horizonte. Muestra ficticia de solo lectura." only %}
+<div class="indicadores previa-totales" aria-label="Totales de la vista previa">
+  {% for estado, total in totales %}
+  <div><strong>{{ total }}</strong><span>{{ estado }}</span></div>
+  {% endfor %}
+</div>
+{% for titulo, filas in secciones %}
+<section class="previa-seccion" aria-labelledby="previa-{{ forloop.counter }}">
+  <h2 id="previa-{{ forloop.counter }}">{{ titulo }}</h2>
+  <div class="superficie-listado">
+    <table class="tabla-oficina" aria-labelledby="previa-{{ forloop.counter }}" role="table">
+      <thead role="rowgroup">
+        <tr role="row"><th scope="col">Fila</th><th scope="col">Registro</th><th scope="col">Resultado</th><th scope="col">Motivo</th></tr>
+      </thead>
+      <tbody role="rowgroup">
+        {% for resultado in filas %}
+        <tr role="row">
+          <td role="cell"><span class="previa-numero"><span>Fila </span>{{ resultado.fila.numero }}</span></td>
+          <td class="previa-registro" role="cell">
+            <strong>{{ resultado.fila.identificacion }}</strong>
+            <small>{% if resultado.fila.datos.nombre %}{{ resultado.fila.datos.nombre }}{% else %}{{ resultado.fila.datos.alcance }}{% endif %}</small>
+          </td>
+          <td role="cell"><span class="etiqueta-oficina{% if resultado.estado == 'Coincide' %} etiqueta-completa{% elif resultado.estado == 'Se crearía' %} etiqueta-curso{% elif resultado.estado == 'Revisar' %} etiqueta-espera{% endif %}">{{ resultado.estado }}</span></td>
+          <td class="previa-motivo" role="cell">{{ resultado.motivo }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

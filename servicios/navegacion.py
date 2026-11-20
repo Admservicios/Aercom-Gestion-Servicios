@@ -12,6 +12,7 @@ GRUPOS_OFICINA = (
         ("Abonados", "abonados", None),
         ("Terceros", "terceros", None),
         ("Equipos", "equipos", None),
+        ("Vista previa de importación", "previa_catalogo", "puede_editar_catalogo"),
     )),
     ("Comercial", None, (
         ("Solicitudes de cotización", "solicitudes_cotizacion", "puede_ver_solicitudes"),

@@ -1,0 +1,6 @@
+cliente_codigo,codigo,nombre,planta_codigo,numero_serie,ubicacion
+DEMO-AB-01,DEMO-GE-01,Generador GE-01,DEMO-NORTE,,Sala técnica (demo)
+DEMO-AB-01,DEMO-CO-02,Compresor CO-02,DEMO-DEPOSITO,,
+DEMO-AB-01,FICT-82C-03,Bomba auxiliar,DEMO-DEPOSITO,FICT-0003,Sala de bombas
+DEMO-AB-01,FICT-82C-03,Bomba auxiliar,DEMO-DEPOSITO,FICT-0003,Sala de bombas
+DEMO-AB-01,FICT-82C-04,Generador móvil,SEDE-SIN-CODIGO,FICT-0004,Patio

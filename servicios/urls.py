@@ -2,11 +2,14 @@ from django.contrib.auth import views as auth
 from django.urls import path
 from . import abonos, agenda, alertas, campo_servicios, catalogo, cierres, cotizaciones, facturacion_abonos, facturacion_trabajos, mantenimiento, pedidos, precios, recordatorios, seguimiento, solicitudes, tablero, tiempos, views
 
+from .previa_catalogo import previa_catalogo
+
 urlpatterns = [
     path("", views.inicio, name="inicio"),
     path("ingresar/", auth.LoginView.as_view(template_name="servicios/ingresar.html"), name="ingresar"),
     path("salir/", auth.LogoutView.as_view(), name="salir"),
     path("clientes/", catalogo.clientes, name="clientes"),
+    path("clientes/previa-de-importacion/", previa_catalogo, name="previa_catalogo"),
     path("clientes/abonados/", catalogo.clientes, {"tipo": "abonado"}, name="abonados"),
     path("clientes/terceros/", catalogo.clientes, {"tipo": "tercero"}, name="terceros"),
     path("clientes/nuevo/", catalogo.nuevo_cliente, name="nuevo_cliente"),

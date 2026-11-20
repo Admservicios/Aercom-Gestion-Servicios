@@ -258,3 +258,27 @@
     .tabla-oficina td { padding: 0; border: 0; }
     .tabla-oficina .celda-principal { width: 100%; }
 }
+
+.previa-totales { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); }
+.previa-totales > div {
+    display: grid;
+    padding: .65rem 1rem;
+    background: white;
+    border: 1px solid var(--borde);
+    border-radius: .65rem;
+    color: var(--tenue);
+}
+.previa-totales strong { color: var(--tinta); }
+.previa-seccion { margin-top: 1.25rem; }
+.previa-seccion h2 { margin: 0 0 .5rem; font-size: 1.15rem; }
+.previa-registro { width: 34%; }
+.previa-numero span { display: none; }
+
+@media (max-width: 42rem) {
+    .previa-numero span { display: inline; }
+    .previa-registro, .previa-motivo { width: 100%; }
+}
+
+@media (width > 42rem) {
+    .previa-seccion tr > :is(:first-child, :nth-child(3)) { width: 1%; white-space: nowrap; }
+}
