@@ -7,8 +7,10 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Equipo, Planta, RegistroMantenimiento, Ticket
-from .models import SolicitudCotizacion
+from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Cotizacion, Equipo, Planta, RegistroMantenimiento, Ticket
+from .models import RespuestaPrecio, SolicitudCotizacion, SolicitudPrecio
+from .models import FacturacionMensualAbono, PedidoServicio, Visita
+from .models import ResultadoTrabajoVisita, SolicitudFacturacionTrabajo
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -587,3 +589,574 @@ class SolicitudCotizacionTest(TestCase):
         self.client.force_login(self.revisora)
         self.assertContains(self.client.get(detalle), self.ticket.asunto)
         self.assertEqual(self.client.get(self.alta).status_code, 403)
+
+
+class CotizacionTest(TestCase):
+    def setUp(self):
+        self.comercial = User.objects.create_user("comercial.cotizacion")
+        self.comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(self.comercial)
+        self.abonado = Cliente.objects.create(codigo="AB-04", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.tercero = Cliente.objects.create(codigo="TE-04", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        self.ticket = Ticket.objects.create(asunto="Cambio de correas", cliente_ficha=self.tercero, creado_por=self.comercial)
+        self.nueva = reverse("nueva_cotizacion", args=[self.ticket.pk])
+
+    def test_directa_envio_aprobacion_y_oc_posterior(self):
+        datos = {"alcance": "Cambio de dos correas", "referencia": "PRES-44"}
+        respuesta = self.client.post(self.nueva, datos)
+        cotizacion = self.ticket.cotizaciones.get()
+        detalle = reverse("cotizacion", args=[cotizacion.pk])
+        enviar = reverse("enviar_cotizacion", args=[cotizacion.pk])
+        responder = reverse("respuesta_cotizacion", args=[cotizacion.pk])
+        editar = reverse("editar_cotizacion", args=[cotizacion.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertContains(self.client.post(enviar), "Completá el importe y la moneda")
+        self.assertRedirects(self.client.post(editar, {**datos, "importe": "15000", "moneda": "ars"}), detalle)
+        self.assertRedirects(self.client.post(enviar), detalle)
+        self.assertEqual(self.client.post(enviar).status_code, 404)
+        self.assertContains(self.client.post(responder, {"decision": "aprobada"}), "Registrá la confirmación")
+        correo = {"confirmacion_correo": "Correo del cliente"}
+        self.assertRedirects(self.client.post(responder, {"decision": "aprobada", **correo}), detalle)
+        respaldo = {**correo, "orden_compra": "OC-45"}
+        self.assertRedirects(self.client.post(responder, respaldo), detalle)
+        self.assertRedirects(self.client.post(responder, respaldo), detalle)
+        cotizacion.refresh_from_db()
+        self.assertEqual(cotizacion.estado, Cotizacion.Estado.APROBADA)
+        self.assertEqual(cotizacion.confirmacion_correo, "Correo del cliente")
+        self.assertEqual(cotizacion.orden_compra, "OC-45")
+        self.assertEqual(cotizacion.cambios.count(), 4)
+        self.assertContains(self.client.get(reverse("cotizaciones_terceros"), {"q": "PRES-44"}), "Aprobada")
+        self.assertContains(self.client.get(reverse("ticket", args=[self.ticket.pk])), detalle)
+
+    def test_solicitud_lista_y_cotizacion_de_abonado_en_su_ficha(self):
+        ticket = Ticket.objects.create(asunto="Revisión de abonado", cliente_ficha=self.abonado, creado_por=self.comercial)
+        solicitud = SolicitudCotizacion.objects.create(
+            ticket=ticket, solicitante=self.comercial, memoria="Analizar el alcance.", cantidad_tecnicos=2, horas_por_tecnico=3,
+        )
+        origen = reverse("cotizar_solicitud", args=[solicitud.pk])
+        self.assertEqual(self.client.get(origen).status_code, 404)
+        solicitud.estado = SolicitudCotizacion.Estado.LISTA
+        solicitud.save(update_fields=["estado"])
+        self.assertContains(self.client.get(origen), solicitud.memoria)
+        respuesta = self.client.post(origen, {"alcance": "Mano de obra y repuestos", "referencia": "AB-PRES-99"})
+        cotizacion = solicitud.cotizaciones.get()
+        self.assertRedirects(respuesta, reverse("cotizacion", args=[cotizacion.pk]))
+        self.assertNotContains(self.client.get(reverse("cotizaciones_terceros")), "AB-PRES-99")
+        self.assertContains(self.client.get(reverse("cliente", args=[self.abonado.pk])), "AB-PRES-99")
+
+    def test_rechazo_y_permiso_por_enlace_directo(self):
+        self.client.post(self.nueva, {"alcance": "Alcance ficticio", "importe": "100", "moneda": "USD"})
+        cotizacion = self.ticket.cotizaciones.get()
+        detalle = reverse("cotizacion", args=[cotizacion.pk])
+        self.client.post(reverse("enviar_cotizacion", args=[cotizacion.pk]))
+        respuesta = reverse("respuesta_cotizacion", args=[cotizacion.pk])
+        self.assertContains(self.client.post(respuesta, {"decision": "rechazada"}), "Indicá la respuesta")
+        self.assertRedirects(self.client.post(respuesta, {"decision": "rechazada", "nota": "Cliente desistió."}), detalle)
+        self.assertContains(self.client.get(detalle), "Cliente desistió.")
+        self.assertEqual(self.client.post(respuesta, {"decision": "aprobada", "orden_compra": "OC-90"}).status_code, 404)
+        campo = User.objects.create_user("campo.cotizacion")
+        campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(campo)
+        self.assertEqual(self.client.get(detalle).status_code, 403)
+
+
+class SolicitudPrecioTest(TestCase):
+    def setUp(self):
+        self.comercial = User.objects.create_user("comercial.precios")
+        self.comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(self.comercial)
+        self.hoy = timezone.localdate()
+        self.datos = {
+            "codigo": "COR-91", "descripcion": "Correa estriada", "destinatario": "Compras",
+            "solicitada_el": (self.hoy - timedelta(days=2)).isoformat(),
+        }
+        self.respuesta = {
+            "recibida_el": (self.hoy - timedelta(days=1)).isoformat(), "fuente": "Proveedor ficticio",
+            "precio": "1250.50", "moneda": "ars", "vigente_hasta": (self.hoy + timedelta(days=10)).isoformat(),
+            "respuesta": "Precio confirmado por Compras.",
+        }
+
+    def test_bandeja_respuestas_y_actualizacion_sin_sobrescribir(self):
+        nueva = reverse("nueva_solicitud_precio")
+        vista = reverse("solicitudes_precio")
+        self.client.post(nueva, self.datos)
+        original = SolicitudPrecio.objects.get()
+        enlace = reverse("solicitud_precio", args=[original.pk])
+        self.assertContains(self.client.get(vista, {"q": "COR-91", "estado": "pendiente"}), enlace)
+        self.assertContains(self.client.get(vista, {"q": "estriada"}), enlace)
+        responder = reverse("responder_solicitud_precio", args=[original.pk])
+        for _ in range(2):
+            self.assertRedirects(self.client.post(responder, self.respuesta), enlace)
+        self.assertEqual(original.respuestas.count(), 1)
+        self.assertEqual(original.respuestas.get().moneda, "ARS")
+        self.assertEqual(original.respuestas.get().precio, Decimal("1250.50"))
+        self.assertContains(self.client.get(enlace), "Proveedor ficticio")
+        self.assertNotContains(self.client.get(vista, {"estado": "pendiente"}), enlace)
+        self.assertContains(self.client.get(vista, {"estado": "respondida"}), enlace)
+
+        actualizar = reverse("actualizar_solicitud_precio", args=[original.pk])
+        self.assertContains(self.client.get(actualizar), "Consultar precios anteriores")
+        self.client.post(actualizar, {**self.datos, "solicitada_el": self.hoy.isoformat()})
+        actualizacion = original.actualizaciones.get()
+        self.client.post(reverse("responder_solicitud_precio", args=[actualizacion.pk]), {
+            **self.respuesta, "recibida_el": self.hoy.isoformat(), "precio": "1500",
+        })
+        self.assertEqual(actualizacion.respuestas.get().precio, Decimal("1500"))
+        self.assertEqual(original.respuestas.get().precio, Decimal("1250.50"))
+        self.assertContains(self.client.get(enlace), reverse("solicitud_precio", args=[actualizacion.pk]))
+
+    def test_valida_fechas_y_restringe_acceso(self):
+        self.client.post(reverse("nueva_solicitud_precio"), self.datos)
+        solicitud = SolicitudPrecio.objects.get()
+        responder = reverse("responder_solicitud_precio", args=[solicitud.pk])
+        fecha_anterior = (self.hoy - timedelta(days=3)).isoformat()
+        respuesta = self.client.post(responder, {**self.respuesta, "recibida_el": fecha_anterior})
+        self.assertContains(respuesta, "La respuesta no puede ser anterior")
+        respuesta = self.client.post(responder, {**self.respuesta, "vigente_hasta": fecha_anterior})
+        self.assertContains(respuesta, "La vigencia no puede terminar antes")
+        self.assertFalse(RespuestaPrecio.objects.exists())
+        campo = User.objects.create_user("campo.precios")
+        campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(campo)
+        self.assertEqual(self.client.get(reverse("solicitudes_precio")).status_code, 403)
+        self.assertEqual(self.client.post(responder, self.respuesta).status_code, 403)
+
+    def test_vinculos_a_cotizacion_y_repuesto_sin_perder_historial(self):
+        cliente = Cliente.objects.create(codigo="TE-91", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        ticket = Ticket.objects.create(asunto="Trabajo ficticio", cliente_ficha=cliente, creado_por=self.comercial)
+        cotizacion = ticket.cotizaciones.create(alcance="Verificar correas")
+        self.client.post(reverse("precio_cotizacion", args=[cotizacion.pk]), self.datos)
+        precio = cotizacion.solicitudes_precio.get()
+        self.assertContains(self.client.get(reverse("cotizacion", args=[cotizacion.pk])), precio.descripcion)
+
+        tecnica = ticket.solicitudes_cotizacion.create(
+            solicitante=self.comercial, memoria="Revisar la correa", cantidad_tecnicos=1, horas_por_tecnico=1,
+        )
+        repuesto = tecnica.repuestos.create(descripcion="Correa estriada", referencia="COR-91", cantidad=1)
+        alta = reverse("precio_repuesto", args=[repuesto.pk])
+        self.assertContains(self.client.get(alta), "Consultar precios anteriores")
+        self.client.post(alta, self.datos)
+        solicitud = repuesto.solicitudes_precio.get()
+        repuesto.delete()
+        solicitud.refresh_from_db()
+        self.assertIsNone(solicitud.repuesto_id)
+        self.assertEqual(solicitud.codigo, "COR-91")
+
+
+class PedidoServicioTest(TestCase):
+    def setUp(self):
+        self.administracion = User.objects.create_user("administracion.pedidos")
+        self.administracion.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.coordinacion = User.objects.create_user("coordinacion.pedidos")
+        self.coordinacion.groups.add(Group.objects.create(name=Rol.COORDINACION))
+        self.client.force_login(self.administracion)
+        self.cliente = Cliente.objects.create(codigo="AB-51", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.tercero = Cliente.objects.create(codigo="TE-51", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        self.ticket = Ticket.objects.create(asunto="Servicio ficticio", cliente_ficha=self.cliente, creado_por=self.administracion)
+        self.otro_ticket = Ticket.objects.create(asunto="Segundo trabajo", cliente_ficha=self.cliente, creado_por=self.administracion)
+        self.cotizacion = self.ticket.cotizaciones.create(alcance="Revisar generador", estado=Cotizacion.Estado.APROBADA)
+        self.otro_presupuesto = self.otro_ticket.cotizaciones.create(
+            alcance="Cambio de correas", estado=Cotizacion.Estado.APROBADA,
+        )
+        self.equipo = self.cliente.equipos.create(codigo="EQ-51", nombre="Generador ficticio")
+        self.alta = reverse("pedido_desde_cotizacion", args=[self.cotizacion.pk])
+        self.datos = {
+            "alcance": "Revisión y cambio de correas", "tipo": "servicio",
+            "cotizaciones": [self.cotizacion.pk, self.otro_presupuesto.pk], "equipos": [self.equipo.pk],
+        }
+
+    def test_pedido_de_varias_cotizaciones_y_seguimiento_en_excel(self):
+        respuesta = self.client.post(self.alta, self.datos)
+        pedido = self.ticket.pedidos_servicio.get()
+        detalle = reverse("pedido_servicio", args=[pedido.pk])
+        seguir = reverse("seguimiento_pedido", args=[pedido.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertEqual(set(pedido.cotizaciones.all()), {self.cotizacion, self.otro_presupuesto})
+        self.assertContains(self.client.get(reverse("ticket", args=[self.otro_ticket.pk])), detalle)
+        self.assertRedirects(self.client.post(seguir, {"estado": "enviado", "referencia": "Correo ficticio"}), detalle)
+        self.client.force_login(self.coordinacion)
+        self.assertRedirects(self.client.post(seguir, {"estado": "pendiente_agendar"}), detalle)
+        self.assertContains(self.client.post(seguir, {"estado": "agendado"}), "Indicá la fecha registrada")
+        self.assertRedirects(self.client.post(seguir, {
+            "estado": "agendado", "fecha_agendada": "2026-12-15", "referencia": "Agenda General",
+        }), detalle)
+        pedido.refresh_from_db()
+        self.assertEqual(pedido.fecha_agendada, date(2026, 12, 15))
+        self.assertEqual(list(pedido.cambios.order_by("pk").values_list("estado", flat=True)), [
+            "preparacion", "enviado", "pendiente_agendar", "agendado",
+        ])
+        self.assertContains(self.client.get(reverse("pedidos_servicio"), {"estado": "agendado"}), detalle)
+
+    def test_cobertura_confirmada_y_rechazo_de_fuentes_ajenas(self):
+        contrato = self.cliente.contratos_abono.create(
+            referencia="AB-51", vigente_desde=date(2020, 1, 1), alcance="Servicio preventivo",
+            frecuencia="Mensual", valor=100, moneda="ARS", cobertura_general=True,
+        )
+        alta = reverse("pedido_por_abono", args=[self.ticket.pk])
+        formulario = {"contrato": contrato.pk, "alcance": "Visita de abono", "equipos": [self.equipo.pk]}
+        self.assertTrue(self.client.post(alta, formulario).context["form"].has_error("cobertura_confirmada", "required"))
+        self.client.post(alta, {**formulario, "cobertura_confirmada": "on", "tipo": "repuestos"})
+        self.assertEqual(contrato.pedidos_servicio.get().tipo, PedidoServicio.Tipo.SERVICIO)
+        ajeno = Ticket.objects.create(asunto="Servicio ajeno", cliente_ficha=self.tercero, creado_por=self.administracion)
+        cotizacion_ajena = ajeno.cotizaciones.create(alcance="Otra oferta", estado=Cotizacion.Estado.APROBADA)
+        equipo_ajeno = self.tercero.equipos.create(codigo="OTRO", nombre="Otro generador")
+        respuesta = self.client.post(self.alta, {
+            **self.datos, "cotizaciones": [cotizacion_ajena.pk], "equipos": [equipo_ajeno.pk],
+        })
+        self.assertTrue(respuesta.context["form"].has_error("cotizaciones", "invalid_choice"))
+        self.assertTrue(respuesta.context["form"].has_error("equipos", "invalid_choice"))
+        self.assertEqual(self.client.get(reverse("pedido_por_abono", args=[ajeno.pk])).status_code, 404)
+        self.cotizacion.estado = Cotizacion.Estado.PREPARACION
+        self.cotizacion.save(update_fields=["estado"])
+        self.assertEqual(self.client.get(self.alta).status_code, 404)
+
+    def test_venta_de_repuestos_registra_confirmacion_de_logistica(self):
+        datos = {**self.datos, "tipo": "repuestos"}
+        self.assertContains(self.client.post(self.alta, datos), "Indicá retiro en depósito o envío.")
+        self.client.post(self.alta, {**datos, "modalidad_entrega": "retiro"})
+        pedido = self.ticket.pedidos_servicio.get()
+        detalle = reverse("pedido_servicio", args=[pedido.pk])
+        seguir = reverse("seguimiento_pedido", args=[pedido.pk])
+        self.assertContains(self.client.get(detalle), "Retiro en depósito")
+        self.assertRedirects(self.client.post(seguir, {"estado": "enviado"}), detalle)
+        self.assertContains(self.client.post(seguir, {"estado": "entregado"}), "confirmación o referencia informada")
+        self.assertRedirects(self.client.post(seguir, {"estado": "entregado", "referencia": "Remito ficticio"}), detalle)
+        self.assertContains(self.client.get(detalle), "Remito ficticio")
+        pedido.refresh_from_db()
+        self.assertIsNone(pedido.fecha_agendada)
+        self.assertEqual(pedido.estado, PedidoServicio.Estado.ENTREGADO)
+        campo = User.objects.create_user("campo.pedidos")
+        campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(campo)
+        self.assertEqual(self.client.get(detalle).status_code, 403)
+
+
+class AgendaOperativaTest(TestCase):
+    def setUp(self):
+        self.coordinacion = User.objects.create_user("coordinacion.agenda")
+        self.coordinacion.groups.add(Group.objects.create(name=Rol.COORDINACION))
+        self.client.force_login(self.coordinacion)
+        campo = Group.objects.get(name=Rol.CAMPO)
+        self.tecnico = User.objects.create_user("bruno.agenda")
+        self.segundo = User.objects.create_user("vera.agenda")
+        self.ajeno = User.objects.create_user("otro.agenda")
+        campo.user_set.add(self.tecnico, self.segundo, self.ajeno)
+        self.cliente = Cliente.objects.create(codigo="AB-52", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.planta = self.cliente.plantas.create(codigo="P-1", nombre="Planta ficticia")
+        self.ticket = Ticket.objects.create(
+            asunto="Servicio ficticio", cliente_ficha=self.cliente, planta_ficha=self.planta, creado_por=self.coordinacion,
+        )
+        self.pedido = self.ticket.pedidos_servicio.create(alcance="Visita de ejemplo", estado=PedidoServicio.Estado.ENVIADO)
+        self.trabajo = self.ticket.acciones.create(titulo="Revisar vibración", responsable=self.tecnico)
+        self.otro_trabajo = self.ticket.acciones.create(titulo="Lavar generador", responsable=self.segundo)
+        self.alta = reverse("visita_pedido", args=[self.pedido.pk])
+        self.datos = {
+            "planta": self.planta.pk, "fecha": "2026-12-15", "hora_desde": "09:00", "hora_hasta": "11:00",
+            "referencia_excel": "DATOS, fila ficticia 15", "tecnicos": [self.tecnico.pk, self.segundo.pk],
+            "pedidos": [self.pedido.pk], "trabajos": [self.trabajo.pk, self.otro_trabajo.pk],
+        }
+
+    def test_visita_con_varios_tecnicos_y_trabajos_y_filtro(self):
+        respuesta = self.client.post(self.alta, self.datos)
+        visita = Visita.objects.get()
+        detalle = reverse("visita", args=[visita.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertEqual(set(visita.tecnicos.all()), {self.tecnico, self.segundo})
+        self.assertEqual(set(visita.trabajos.all()), {self.trabajo, self.otro_trabajo})
+        self.pedido.refresh_from_db()
+        self.assertEqual(self.pedido.estado, PedidoServicio.Estado.AGENDADO)
+        for tecnico in (self.tecnico, self.segundo):
+            agenda = self.client.get(reverse("agenda"), {"dia": self.datos["fecha"], "tecnico": tecnico.pk})
+            self.assertContains(agenda, "Revisar vibración")
+            self.assertContains(agenda, "Planta ficticia")
+        agenda = self.client.get(reverse("agenda"), {"dia": self.datos["fecha"], "tecnico": self.ajeno.pk})
+        self.assertNotContains(agenda, detalle)
+        self.assertContains(self.client.get(reverse("pedido_servicio", args=[self.pedido.pk])), detalle)
+        self.assertContains(self.client.get(reverse("cliente", args=[self.cliente.pk])), detalle)
+
+    def test_reprogramacion_conserva_fecha_anterior_y_actualiza_pedido(self):
+        self.client.post(self.alta, self.datos)
+        visita = Visita.objects.get()
+        editar = reverse("reprogramar_visita", args=[visita.pk])
+        datos = {
+            "fecha": "2026-12-17", "hora_desde": "10:00", "hora_hasta": "12:00",
+            "referencia_excel": "DATOS, fila ficticia 17",
+        }
+        self.assertTrue(self.client.post(editar, datos).context["form"].has_error("motivo", "required"))
+        motivo = "Reprogramada a pedido del cliente"
+        self.assertRedirects(self.client.post(editar, {**datos, "motivo": motivo}), reverse("visita", args=[visita.pk]))
+        self.pedido.refresh_from_db()
+        self.assertEqual(self.pedido.fecha_agendada, date(2026, 12, 17))
+        movimientos = list(visita.movimientos.order_by("pk"))
+        self.assertEqual([movimiento.fecha for movimiento in movimientos], [date(2026, 12, 15), date(2026, 12, 17)])
+        self.assertEqual(movimientos[-1].motivo, motivo)
+        self.assertContains(self.client.post(editar, {**datos, "motivo": motivo}), "Indicá una fecha u horario diferente.")
+        self.assertEqual(visita.movimientos.count(), 2)
+
+    def test_validaciones_y_permisos(self):
+        cliente_ajeno = Cliente.objects.create(codigo="TE-52", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        otro_ticket = Ticket.objects.create(asunto="Otro cliente", cliente_ficha=cliente_ajeno, creado_por=self.coordinacion)
+        ajeno = otro_ticket.acciones.create(titulo="Trabajo ajeno", responsable=self.tecnico)
+        respuesta = self.client.post(self.alta, {**self.datos, "hora_hasta": "08:00", "trabajos": [ajeno.pk]})
+        self.assertTrue(respuesta.context["form"].has_error("trabajos", "invalid_choice"))
+        self.assertContains(respuesta, "La hora de fin debe ser posterior")
+        self.assertFalse(Visita.objects.exists())
+        self.client.force_login(self.tecnico)
+        self.assertEqual(self.client.get(reverse("agenda")).status_code, 403)
+        self.assertEqual(self.client.post(self.alta, self.datos).status_code, 403)
+
+
+class ServiciosTecnicosTest(TestCase):
+    def setUp(self):
+        self.oficina = User.objects.create_user("oficina.campo")
+        self.oficina.groups.add(Group.objects.create(name=Rol.COORDINACION))
+        campo = Group.objects.get(name=Rol.CAMPO)
+        self.tecnico = User.objects.create_user("bruno.campo")
+        self.otro = User.objects.create_user("vera.campo")
+        self.ajeno = User.objects.create_user("ajeno.campo")
+        campo.user_set.add(self.tecnico, self.otro, self.ajeno)
+        self.cliente = Cliente.objects.create(codigo="AB-53", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        ticket = Ticket.objects.create(asunto="Servicio ficticio", cliente_ficha=self.cliente, creado_por=self.oficina)
+        self.trabajo = ticket.acciones.create(titulo="Lavado ficticio", responsable=self.tecnico)
+        self.otro_trabajo = ticket.acciones.create(titulo="Revisión ficticia", responsable=self.otro)
+        self.visita = self.crear_visita(date(2026, 11, 15))
+        self.visita.trabajos.add(self.trabajo, self.otro_trabajo)
+        self.detalle = reverse("servicio_visita", args=[self.visita.pk])
+        self.alta = reverse("resultado_visita", args=[self.visita.pk, self.trabajo.pk])
+
+    def crear_visita(self, fecha):
+        visita = Visita.objects.create(cliente=self.cliente, fecha=fecha, hora_desde="09:00", hora_hasta="11:00")
+        visita.tecnicos.add(self.tecnico, self.otro)
+        return visita
+
+    def test_registra_resultados_independientes_y_evitar_doble_envio(self):
+        self.client.force_login(self.tecnico)
+        self.assertContains(self.client.get(reverse("servicios_tecnicos")), self.detalle)
+        self.assertContains(self.client.get(reverse("inicio")), f"{self.detalle}#trabajo-{self.trabajo.pk}")
+        self.assertRedirects(
+            self.client.post(reverse("realizar", args=[self.trabajo.pk])), reverse("servicios_tecnicos"),
+        )
+        datos = {"estado": "realizado", "referencia_sap": "LLAMADA-FICTICIA-53"}
+        self.assertRedirects(self.client.post(self.alta, datos), self.detalle)
+        self.assertRedirects(self.client.post(self.alta, {"estado": "pendiente"}), self.detalle)
+        registro = ResultadoTrabajoVisita.objects.get()
+        self.assertEqual(registro.autor, self.tecnico)
+        self.assertEqual(registro.responsable, self.tecnico)
+        self.assertEqual(registro.estado, ResultadoTrabajoVisita.Estado.REALIZADO)
+        self.trabajo.refresh_from_db()
+        self.otro_trabajo.refresh_from_db()
+        self.assertEqual(self.trabajo.realizada_el, registro.registrado_el)
+        self.assertEqual(self.trabajo.realizada_por, self.tecnico)
+        self.assertIsNone(self.otro_trabajo.realizada_el)
+        self.assertNotContains(self.client.get(self.detalle), "Revisión ficticia")
+
+        self.client.force_login(self.oficina)
+        resultado = self.client.get(self.detalle)
+        for texto in ("Lavado ficticio", "Revisión ficticia", "LLAMADA-FICTICIA-53", "Pendiente de registrar resultado."):
+            self.assertContains(resultado, texto)
+        self.assertEqual(self.client.post(self.alta, datos).status_code, 403)
+        reprogramar = reverse("reprogramar_visita", args=[self.visita.pk])
+        self.assertEqual(self.client.get(reprogramar).status_code, 409)
+
+    def test_parcial_y_pendiente_seguido_de_realizado_en_otra_visita(self):
+        self.client.force_login(self.tecnico)
+        self.assertContains(
+            self.client.post(self.alta, {"estado": "parcial"}), "Indicá qué falta para poder continuar",
+        )
+        self.client.post(self.alta, {"estado": "parcial", "observacion": "Queda limpiar el interior."})
+        self.trabajo.refresh_from_db()
+        self.assertEqual(self.trabajo.estado, Accion.Estado.EN_ESPERA)
+        self.assertEqual(self.trabajo.motivo_espera, "Queda limpiar el interior.")
+        self.assertIsNone(self.trabajo.realizada_el)
+        segunda = self.crear_visita(date(2026, 11, 16))
+        segunda.trabajos.add(self.trabajo)
+        self.client.post(reverse("resultado_visita", args=[segunda.pk, self.trabajo.pk]), {
+            "estado": "pendiente", "observacion": "Falta acceso al equipo.",
+        })
+        tercera = self.crear_visita(date(2026, 11, 17))
+        tercera.trabajos.add(self.trabajo)
+        self.client.post(reverse("resultado_visita", args=[tercera.pk, self.trabajo.pk]), {"estado": "realizado"})
+        self.assertEqual(
+            list(self.trabajo.resultados_visita.order_by("pk").values_list("estado", flat=True)),
+            ["parcial", "pendiente", "realizado"],
+        )
+        self.trabajo.refresh_from_db()
+        self.assertEqual(self.trabajo.estado, Accion.Estado.REALIZADA)
+
+    def test_acceso_directo_a_visita_o_trabajo_ajeno(self):
+        self.client.force_login(self.ajeno)
+        self.assertNotContains(self.client.get(reverse("servicios_tecnicos")), self.detalle)
+        self.assertEqual(self.client.get(self.detalle).status_code, 404)
+        self.assertEqual(self.client.post(self.alta, {"estado": "realizado"}).status_code, 404)
+        self.client.force_login(self.otro)
+        self.assertEqual(self.client.post(self.alta, {"estado": "realizado"}).status_code, 404)
+        self.assertFalse(ResultadoTrabajoVisita.objects.exists())
+
+
+class FacturacionMensualAbonoTest(TestCase):
+    def setUp(self):
+        self.oficina = User.objects.create_user("oficina.facturacion")
+        self.oficina.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.client.force_login(self.oficina)
+        self.cliente = Cliente.objects.create(codigo="AB-61", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.tercero = Cliente.objects.create(codigo="TE-61", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        self.contrato = self.cliente.contratos_abono.create(
+            referencia="AB-61", vigente_desde=date(2020, 1, 1), alcance="Visita preventiva", frecuencia="Mensual",
+            cobertura_general=True, valor=Decimal("15000.50"), moneda="ARS", requiere_oc=True,
+            requiere_hes=True, portal="Portal ficticio", requisitos_administrativos="Solicitar hoja de servicio.",
+        )
+        self.alta = reverse("facturacion_abono_mes", args=["2026-11", self.cliente.pk])
+        self.datos = {
+            "estado": "pendiente", "importe": "16200.50", "moneda": "ars", "ajuste": "Ajuste de ejemplo",
+            "requiere_oc": "on", "requiere_hes": "on", "portal": "Portal ficticio", "modalidad": "Primer día hábil",
+        }
+
+    def test_control_mensual_precarga_y_conserva_historial_independiente(self):
+        form = self.client.get(self.alta).context["form"]
+        self.assertEqual(form["importe"].value(), Decimal("15000.50"))
+        self.assertTrue(form["requiere_oc"].value())
+        self.assertEqual(form["portal"].value(), "Portal ficticio")
+        self.assertRedirects(self.client.post(self.alta, self.datos), self.alta)
+        registro = self.cliente.facturacion_mensual.get()
+        self.assertEqual(registro.contrato, self.contrato)
+        self.assertEqual(registro.importe, Decimal("16200.50"))
+        listado = self.client.get(reverse("facturacion_abonos"), {"periodo": "2026-11"})
+        self.assertContains(listado, "OC pendiente")
+        self.assertContains(listado, "HES pendiente")
+        self.assertNotContains(listado, self.tercero.nombre)
+        self.assertEqual(self.client.post(self.alta, self.datos).status_code, 409)
+        otro_mes = reverse("facturacion_abono_mes", args=["2026-12", self.cliente.pk])
+        self.assertRedirects(self.client.post(otro_mes, {**self.datos, "importe": "18000"}), otro_mes)
+        registro.refresh_from_db()
+        self.assertEqual(registro.importe, Decimal("16200.50"))
+        self.assertContains(self.client.get(reverse("cliente", args=[self.cliente.pk])), "12/2026")
+        self.assertEqual(self.cliente.facturacion_mensual.count(), 2)
+
+    def test_factura_sap_y_respaldo_sin_cerrar_trabajos(self):
+        ticket = Ticket.objects.create(asunto="Trabajo abierto", cliente_ficha=self.cliente, creado_por=self.oficina)
+        accion = ticket.acciones.create(titulo="Revisar generador", responsable=self.oficina)
+        self.client.post(self.alta, self.datos)
+        registro = self.cliente.facturacion_mensual.get()
+        version = registro.actualizado_el.isoformat()
+        factura = {**self.datos, "version": version, "estado": "facturada"}
+        respuesta = self.client.post(self.alta, factura)
+        for campo in ("factura_sap", "fecha_factura"):
+            self.assertTrue(respuesta.context["form"].has_error(campo))
+        factura.update(factura_sap="SAP-FICTICIA-61", fecha_factura=timezone.localdate().isoformat(), orden_compra="OC-61")
+        self.assertRedirects(self.client.post(self.alta, factura), self.alta)
+        self.assertEqual(self.client.post(self.alta, factura).status_code, 409)
+        registro.refresh_from_db()
+        self.assertEqual(registro.estado, FacturacionMensualAbono.Estado.FACTURADA)
+        self.assertEqual(registro.factura_sap, "SAP-FICTICIA-61")
+        self.assertIsNone(accion.realizada_el)
+        ficha = self.client.get(reverse("cliente", args=[self.cliente.pk]))
+        self.assertContains(ficha, "SAP-FICTICIA-61")
+        self.assertContains(ficha, "Revisar generador")
+
+    def test_no_corresponde_con_motivo_y_permiso_por_rol(self):
+        mes_sin_contrato = reverse("facturacion_abono_mes", args=["2019-12", self.cliente.pk])
+        form = self.client.get(mes_sin_contrato).context["form"]
+        self.assertEqual(form["estado"].value(), "no_corresponde")
+        self.assertContains(self.client.post(mes_sin_contrato, self.datos), "Seleccioná un contrato")
+        self.assertRedirects(self.client.post(mes_sin_contrato, {
+            "estado": "no_corresponde", "observaciones": "Sin cobertura ese mes.",
+        }), mes_sin_contrato)
+        self.assertEqual(self.client.get(reverse("facturacion_abono_mes", args=["2026-11", self.tercero.pk])).status_code, 404)
+        comercial = User.objects.create_user("comercial.facturacion")
+        comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(comercial)
+        self.assertEqual(self.client.get(self.alta).status_code, 403)
+        self.assertNotContains(self.client.get(reverse("cliente", args=[self.cliente.pk])), "Facturación mensual del abono")
+
+
+class FacturacionTrabajoTest(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("administracion.trabajo")
+        self.admin.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.comercial = User.objects.create_user("comercial.trabajo")
+        self.comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.cliente = Cliente.objects.create(codigo="AB-62", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.ticket = Ticket.objects.create(asunto="Revisión ficticia", cliente_ficha=self.cliente, creado_por=self.comercial)
+        self.cotizacion = self.ticket.cotizaciones.create(
+            referencia="PRES-62", alcance="Revisión", estado=Cotizacion.Estado.APROBADA,
+            orden_compra="OC-62", moneda="ARS",
+        )
+        self.pedido = self.ticket.pedidos_servicio.create(alcance="Revisión")
+        self.pedido.cotizaciones.add(self.cotizacion)
+        self.datos = {
+            "modalidad": "previa", "cotizacion": self.cotizacion.pk, "orden_compra": "OC-62",
+            "correo_envio": "cliente@example.com", "centro_costo": "FICTICIO-62", "moneda": "ars",
+            "cobranza_aplica": "on", "documentacion_faltante": "Falta HES.",
+        }
+
+    def test_solicitud_previa_factura_y_cobranza_son_independientes(self):
+        accion = self.ticket.acciones.create(titulo="Trabajo por hacer", responsable=self.comercial)
+        self.client.force_login(self.comercial)
+        alta = reverse("facturar_pedido", args=[self.pedido.pk])
+        self.assertEqual(self.client.get(alta).context["form"]["orden_compra"].value(), "OC-62")
+        incluido = self.ticket.acciones.create(
+            titulo="Lavado incluido", responsable=self.comercial, facturacion=Accion.Facturacion.ABONO,
+        )
+        self.assertContains(self.client.post(alta, {**self.datos, "trabajos": [incluido.pk]}), "Separá los trabajos cubiertos")
+        respuesta = self.client.post(alta, {**self.datos, "trabajos": [accion.pk]})
+        solicitud = self.pedido.solicitudes_facturacion.get()
+        self.assertEqual(list(solicitud.trabajos.all()), [accion])
+        detalle = reverse("facturacion_trabajo", args=[solicitud.pk])
+        editar = reverse("actualizar_facturacion_trabajo", args=[solicitud.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertEqual(solicitud.estado, SolicitudFacturacionTrabajo.Estado.EN_ESPERA)
+        self.assertEqual(self.client.get(editar).status_code, 403)
+        self.assertContains(self.client.get(reverse("facturacion_trabajos")), "Falta HES.")
+
+        self.client.force_login(self.admin)
+        datos = {
+            **self.datos, "version": str(solicitud.movimientos.first().pk), "documentacion_faltante": "",
+            "factura_sap": "SAP-FICTICIA-62",
+        }
+        self.assertContains(self.client.post(editar, datos), "Ingresá la fecha de emisión en SAP.")
+        hoy = timezone.localdate().isoformat()
+        self.assertRedirects(self.client.post(editar, {**datos, "fecha_factura": hoy}), detalle)
+        self.assertEqual(self.client.post(editar, datos).status_code, 409)
+        solicitud.refresh_from_db()
+        self.assertEqual(solicitud.estado, SolicitudFacturacionTrabajo.Estado.FACTURADA)
+        self.assertEqual(solicitud.estado_cobranza, "Pendiente de cobro")
+        datos.update(
+            version=str(solicitud.movimientos.first().pk), fecha_factura=hoy,
+            referencia_cobro="REC-FICTICIO-62", fecha_cobro=hoy,
+        )
+        self.assertRedirects(self.client.post(editar, datos), detalle)
+        solicitud.refresh_from_db()
+        accion.refresh_from_db()
+        self.assertEqual(solicitud.estado_cobranza, "Cobrada")
+        self.assertIsNone(accion.realizada_el)
+        self.assertContains(self.client.get(detalle), "REC-FICTICIO-62")
+
+    def test_pedido_de_abono_conserva_cobertura_sin_factura_puntual(self):
+        contrato = self.cliente.contratos_abono.create(
+            referencia="AB-62", vigente_desde=date(2020, 1, 1), alcance="Revisión", frecuencia="Mensual",
+            valor=100, moneda="ARS", cobertura_general=True,
+        )
+        pedido = self.ticket.pedidos_servicio.create(contrato=contrato, alcance="Abono")
+        self.client.force_login(self.admin)
+        alta = reverse("facturar_pedido", args=[pedido.pk])
+        self.assertTrue(self.client.post(alta, {"modalidad": "posterior"}).context["form"].has_error("modalidad"))
+        self.client.post(alta, {"modalidad": "abono"})
+        solicitud = pedido.solicitudes_facturacion.get()
+        self.assertEqual(solicitud.estado, SolicitudFacturacionTrabajo.Estado.CUBIERTA)
+        editar = reverse("actualizar_facturacion_trabajo", args=[solicitud.pk])
+        self.assertNotIn("factura_sap", self.client.get(editar).context["form"].fields)
+
+    def test_solicitud_ajena_y_cotizacion_de_otro_ticket(self):
+        otro = User.objects.create_user("otro.trabajo")
+        self.comercial.groups.first().user_set.add(otro)
+        otro_ticket = Ticket.objects.create(asunto="Otro trabajo", cliente_ficha=self.cliente, creado_por=otro)
+        cotizacion = otro_ticket.cotizaciones.create(alcance="Otro", estado=Cotizacion.Estado.APROBADA)
+        self.client.force_login(self.comercial)
+        alta = reverse("facturar_ticket", args=[self.ticket.pk])
+        respuesta = self.client.post(alta, {**self.datos, "cotizacion": cotizacion.pk})
+        self.assertTrue(respuesta.context["form"].has_error("cotizacion", "invalid_choice"))
+        self.client.post(alta, {**self.datos, "modalidad": "posterior"})
+        solicitud = SolicitudFacturacionTrabajo.objects.get()
+        self.client.force_login(otro)
+        self.assertEqual(self.client.get(reverse("facturacion_trabajo", args=[solicitud.pk])).status_code, 404)
+        self.assertNotContains(self.client.get(reverse("facturacion_trabajos")), "Revisión ficticia")

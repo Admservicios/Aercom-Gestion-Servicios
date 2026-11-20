@@ -4,6 +4,7 @@
 <p class="contexto">SC-{{ solicitud.pk }} · {{ solicitud.get_estado_display }}</p>
 <h1>{{ solicitud.ticket.asunto }}</h1>
 <p>{{ solicitud.ticket.cliente_nombre }}{% if solicitud.ticket.planta_ficha %} · {{ solicitud.ticket.planta_ficha.nombre }}{% endif %} · <a href="{% url 'ticket' solicitud.ticket_id %}">Ticket T-{{ solicitud.ticket_id }}</a></p>
+{% if puede_cotizar_solicitud %}<p><a class="boton" href="{% url 'cotizar_solicitud' solicitud.pk %}">Preparar cotización</a></p>{% endif %}
 {% if puede_reenviar %}<p><a class="boton" href="{% url 'reenviar_solicitud_cotizacion' solicitud.pk %}">Completar y reenviar</a></p>{% endif %}
 <article>
   <h2>Análisis técnico</h2>
@@ -25,11 +26,24 @@
   <h3>Repuestos e insumos</h3>
   <ul>
     {% for repuesto in solicitud.repuestos.all %}
-    <li>{{ repuesto.descripcion }}{% if repuesto.referencia %} · {{ repuesto.referencia }}{% endif %} · {{ repuesto.cantidad }} {% if repuesto.por_equipo %}por equipo{% else %}en total{% endif %}</li>
+    <li>{{ repuesto.descripcion }}{% if repuesto.referencia %} · {{ repuesto.referencia }}{% endif %} · {{ repuesto.cantidad }} {% if repuesto.por_equipo %}por equipo{% else %}en total{% endif %}
+      {% if puede_gestionar_cotizaciones %}
+      · <a href="{% url 'precio_repuesto' repuesto.pk %}">Registrar solicitud de precio</a>
+      {% for precio in repuesto.solicitudes_precio.all %}
+      · <a href="{% url 'solicitud_precio' precio.pk %}">SP-{{ precio.pk }}</a>
+      {% endfor %}
+      {% endif %}
+    </li>
     {% empty %}<li>Sin repuestos registrados.</li>{% endfor %}
   </ul>
   {% if solicitud.adicionales %}<h3>Adicionales</h3>{{ solicitud.adicionales|linebreaks }}{% endif %}
 </article>
+{% if cotizaciones %}
+<article>
+  <h2>Cotizaciones vinculadas</h2>
+  {% include "servicios/cotizaciones_vinculadas.html" %}
+</article>
+{% endif %}
 <article>
   <h2>Historial</h2>
   <ul>

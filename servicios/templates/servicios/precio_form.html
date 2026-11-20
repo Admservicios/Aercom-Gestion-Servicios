@@ -1,0 +1,11 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p>
+  {% if es_respuesta %}<a href="{% url 'solicitud_precio' solicitud.pk %}">Volver a SP-{{ solicitud.pk }}</a>
+  {% else %}<a href="{% url 'solicitudes_precio' %}">Volver a solicitudes de precios</a>{% endif %}
+</p>
+<h1>{% if es_respuesta %}Registrar respuesta{% elif solicitud.anterior_id %}Pedir actualización de precio{% else %}Registrar solicitud de precio{% endif %}</h1>
+{% if es_respuesta %}<p>{{ solicitud.descripcion }}{% if solicitud.codigo %} · {{ solicitud.codigo }}{% endif %}</p>{% endif %}
+{% if busqueda %}<p><a href="{% url 'solicitudes_precio' %}?q={{ busqueda|urlencode }}">Consultar precios anteriores</a></p>{% endif %}
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>{% if es_respuesta %}Guardar respuesta{% else %}Guardar solicitud{% endif %}</button></form></article>
+{% endblock %}

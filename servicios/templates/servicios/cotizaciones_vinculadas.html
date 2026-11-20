@@ -1,0 +1,5 @@
+<ul>
+  {% for cotizacion in cotizaciones %}
+  <li><a href="{% url 'cotizacion' cotizacion.pk %}">C-{{ cotizacion.pk }}{% if cotizacion.referencia %} · {{ cotizacion.referencia }}{% endif %}</a> · {{ cotizacion.get_estado_display }}</li>
+  {% empty %}<li>Sin cotizaciones registradas.</li>{% endfor %}
+</ul>

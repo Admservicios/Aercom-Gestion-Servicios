@@ -31,6 +31,27 @@
 </ul>
 </article>
 {% endif %}
+<article>
+<h2>Cotizaciones</h2>
+{% if puede_gestionar_cotizaciones and ticket.cliente_ficha_id %}
+<p><a href="{% url 'nueva_cotizacion' ticket.pk %}">Nueva cotización directa</a></p>
+{% endif %}
+{% include "servicios/cotizaciones_vinculadas.html" %}
+</article>
+<article>
+  <h2>Pedidos vinculados</h2>
+  {% if puede_gestionar_cotizaciones and ticket.cliente_ficha.tipo == "abonado" %}
+  <p><a href="{% url 'pedido_por_abono' ticket.pk %}">Crear pedido por abono</a></p>
+  {% endif %}
+  {% include "servicios/pedidos_vinculados.html" %}
+</article>
+{% if ticket.cliente_ficha_id %}
+<article>
+  <h2>Facturación de trabajos</h2>
+  <p><a href="{% url 'facturar_ticket' ticket.pk %}">Solicitar facturación de trabajo</a></p>
+  {% include "servicios/facturacion_trabajos_vinculados.html" %}
+</article>
+{% endif %}
 <h2>Acciones</h2>
 {% for accion in acciones %}
 <article id="accion-{{ accion.pk }}">
@@ -40,6 +61,9 @@
 <p>Responsable: {{ accion.responsable.get_full_name|default:accion.responsable.username }}</p>
 <p>{{ accion.get_tipo_display }} · Facturación: {{ accion.get_facturacion_display }}{% if accion.facturacion == "abono" %} (sin cargo adicional){% endif %}</p>
 {% if accion.motivo_espera %}<p>En espera de: {{ accion.motivo_espera }}</p>{% endif %}
+{% for resultado in accion.resultados_visita.all %}
+<p><a href="{% url 'servicio_visita' resultado.visita_id %}#trabajo-{{ accion.pk }}">Visita del {{ resultado.visita.fecha|date:"d/m/Y" }}</a> · {{ resultado.get_estado_display }}</p>
+{% endfor %}
 <h4>Historial</h4>
 <p>Asignada desde {{ accion.asignada_el|date:"d/m/Y H:i" }}{% if accion.asignada_por %} por {{ accion.asignada_por.get_full_name|default:accion.asignada_por.username }}{% endif %}</p>
 {% for cambio in accion.cambios.all %}

@@ -1,0 +1,6 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>El período cambió</h1>
+<p>Volvé a abrir el período para consultar el registro actual antes de guardar.</p>
+<p><a href="{% url 'facturacion_abono_mes' mes cliente.pk %}">Abrir período de {{ cliente.nombre }}</a></p>
+{% endblock %}

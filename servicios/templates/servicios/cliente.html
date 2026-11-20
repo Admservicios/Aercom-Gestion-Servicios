@@ -3,9 +3,20 @@
 <p><a href="{% url 'clientes' %}">Volver a clientes</a></p>
 <p class="contexto">{{ cliente.get_tipo_display }} · {{ cliente.codigo }}</p>
 <h1>{{ cliente.nombre }}</h1>
-<p><a class="boton" href="{% url 'nuevo' %}?cliente_ficha={{ cliente.pk }}">Nuevo ticket</a></p>
+<p><a class="boton" href="{% url 'nuevo' %}?cliente_ficha={{ cliente.pk }}">Nuevo ticket</a>
+{% if puede_editar_agenda %} · <a href="{% url 'visita_cliente' cliente.pk %}">Registrar visita de Excel</a>{% endif %}</p>
 {% if cliente.referencia_sap %}<p>Referencia SAP: {{ cliente.referencia_sap }}</p>{% endif %}
 {% if cliente.tipo == "abonado" %}
+{% if puede_facturar_abonos %}
+<article>
+  <h2>Facturación mensual del abono</h2>
+  <p><a href="{% url 'facturacion_abonos' %}?q={{ cliente.codigo|urlencode }}">Consultar facturación por período</a></p>
+  <ul>{% for control in facturacion_mensual %}
+    <li><a href="{% url 'facturacion_abono_mes' control.periodo|date:'Y-m' cliente.pk %}">{{ control.periodo|date:"m/Y" }}</a> · {{ control.get_estado_display }}
+      {% if control.factura_sap %} · SAP {{ control.factura_sap }}{% endif %}</li>
+  {% empty %}<li>Sin períodos registrados.</li>{% endfor %}</ul>
+</article>
+{% endif %}
 <article id="contratos">
   <h2>Contratos de abono</h2>
   {% if puede_editar_catalogo %}<p><a href="{% url 'nuevo_contrato_abono' cliente.pk %}">Nuevo contrato de abono</a></p>{% endif %}
@@ -85,6 +96,20 @@
     {% empty %}<li>Sin acciones registradas en los tickets del cliente.</li>{% endfor %}
   </ul>
   {% include "servicios/paginacion.html" %}
+</article>
+<article>
+  <h2>Cotizaciones del cliente</h2>
+  {% include "servicios/cotizaciones_vinculadas.html" %}
+</article>
+<article>
+  <h2>Pedidos del cliente</h2>
+  {% include "servicios/pedidos_vinculados.html" %}
+</article>
+<article>
+  <h2>Visitas en Agenda</h2>
+  <ul>{% for visita in visitas %}
+    <li><a href="{% url 'visita' visita.pk %}">{{ visita.fecha|date:"d/m/Y" }} · {{ visita.hora_desde|time:"H:i" }} a {{ visita.hora_hasta|time:"H:i" }}</a>{% if visita.planta_id %} · {{ visita.planta.nombre }}{% endif %}</li>
+  {% empty %}<li>Sin visitas registradas.</li>{% endfor %}</ul>
 </article>
 {% include "servicios/tickets_vinculados.html" %}
 {% endblock %}

@@ -1,0 +1,12 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'ticket' pedido.ticket_id %}">Volver al ticket T-{{ pedido.ticket_id }}</a></p>
+<h1>{% if cotizacion %}Crear pedido desde cotización{% else %}Crear pedido por abono{% endif %}</h1>
+<p>{{ pedido.ticket.cliente_nombre }} · {{ pedido.ticket.asunto }}</p>
+{% if cotizacion %}
+<p>Podés sumar otras cotizaciones aprobadas del mismo cliente al pedido.</p>
+{% else %}
+<p><a href="{% url 'cliente' pedido.ticket.cliente_ficha_id %}#contratos">Consultar contratos de abono</a></p>
+{% endif %}
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Guardar pedido</button></form></article>
+{% endblock %}

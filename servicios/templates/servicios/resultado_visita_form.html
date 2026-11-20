@@ -1,0 +1,7 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'servicio_visita' visita.pk %}#trabajo-{{ trabajo.pk }}">Volver a la visita V-{{ visita.pk }}</a></p>
+<h1>Registrar resultado</h1>
+<p>{{ visita.cliente.nombre }} · {{ trabajo.titulo }}</p>
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Guardar resultado</button></form></article>
+{% endblock %}

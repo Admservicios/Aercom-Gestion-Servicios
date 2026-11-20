@@ -1,0 +1,36 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'solicitudes_precio' %}">Volver a solicitudes de precios</a></p>
+<p class="contexto">SP-{{ solicitud.pk }} · {% if respuestas %}Con respuesta{% else %}Pendiente{% endif %}</p>
+<h1>{{ solicitud.descripcion }}</h1>
+{% if solicitud.codigo %}<p>Código: {{ solicitud.codigo }}</p>{% endif %}
+<p>Solicitada el {{ solicitud.solicitada_el|date:"d/m/Y" }} a {{ solicitud.destinatario }} por {{ solicitud.solicitante.get_full_name|default:solicitud.solicitante.username }}</p>
+{% if solicitud.cotizacion_id %}<p>Cotización <a href="{% url 'cotizacion' solicitud.cotizacion_id %}">C-{{ solicitud.cotizacion_id }}</a></p>{% endif %}
+{% if solicitud.repuesto_id %}<p>Solicitud técnica <a href="{% url 'solicitud_cotizacion' solicitud.repuesto.solicitud_id %}">SC-{{ solicitud.repuesto.solicitud_id }}</a></p>{% endif %}
+{% if solicitud.anterior_id %}
+<p>Actualiza <a href="{% url 'solicitud_precio' solicitud.anterior_id %}">SP-{{ solicitud.anterior_id }}</a>, del {{ solicitud.anterior.solicitada_el|date:"d/m/Y" }}.</p>
+{% endif %}
+<p><a class="boton" href="{% url 'responder_solicitud_precio' solicitud.pk %}">Registrar respuesta</a>
+<a href="{% url 'actualizar_solicitud_precio' solicitud.pk %}">Pedir actualización de precio</a></p>
+<article>
+  <h2>Respuestas</h2>
+  {% for respuesta in respuestas %}
+  <section>
+    <h3>{{ respuesta.moneda }} {{ respuesta.precio|floatformat:2 }} · {{ respuesta.fuente }}</h3>
+    <p>Recibida el {{ respuesta.recibida_el|date:"d/m/Y" }}
+      {% if respuesta.vigente_hasta %} · Vigente hasta {{ respuesta.vigente_hasta|date:"d/m/Y" }}{% if respuesta.vigente_hasta < hoy %} (vencida){% endif %}
+      {% else %} · Vigencia sin informar{% endif %}</p>
+    {{ respuesta.respuesta|linebreaks }}
+    <p class="contexto">Registrada por {{ respuesta.registrado_por.get_full_name|default:respuesta.registrado_por.username }} · {{ respuesta.registrado_el|date:"d/m/Y H:i" }}</p>
+  </section>
+  {% empty %}<p>Sin respuestas registradas.</p>{% endfor %}
+</article>
+{% if actualizaciones %}
+<article>
+  <h2>Actualizaciones solicitadas</h2>
+  <ul>{% for actualizacion in actualizaciones %}
+    <li><a href="{% url 'solicitud_precio' actualizacion.pk %}">SP-{{ actualizacion.pk }}</a> · {{ actualizacion.solicitada_el|date:"d/m/Y" }}</li>
+  {% endfor %}</ul>
+</article>
+{% endif %}
+{% endblock %}

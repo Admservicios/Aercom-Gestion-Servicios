@@ -7,9 +7,11 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from .campo_servicios import visitas_de_campo
+from .facturacion_trabajos import solicitudes_facturacion_visibles
 from .forms import TicketForm, VinculoTicketForm
-from .models import Accion, CambioAccion, Ticket
-from .permisos import ROLES_SERVICIOS, es_oficina, oficina_requerida, servicios_requeridos
+from .models import Accion, CambioAccion, PedidoServicio, Ticket
+from .permisos import ROLES_SERVICIOS, Rol, es_oficina, oficina_requerida, roles, servicios_requeridos
 from .solicitudes import solicitudes_visibles
 
 
@@ -48,6 +50,8 @@ class EstadoForm(forms.Form):
 def ver_campo(request, formulario=None, accion_id=None):
     acciones = Accion.objects.filter(responsable=request.user).select_related(
         "ticket__cliente_ficha", "ticket__equipo_ficha",
+    ).prefetch_related(
+        Prefetch("visitas_agendadas", queryset=visitas_de_campo(request.user), to_attr="mis_visitas"),
     ).order_by(
         F("realizada_el").asc(nulls_first=True), "-asignada_el",
     )
@@ -112,10 +116,19 @@ def vincular_ticket(request, pk):
     registros = Ticket.objects.select_for_update() if request.method == "POST" else Ticket.objects
     registro = get_object_or_404(registros, pk=pk)
     cliente_anterior = registro.cliente_ficha_id
+    planta_anterior = registro.planta_ficha_id
     form = VinculoTicketForm(request.POST if request.method == "POST" else None, instance=registro)
     if form.is_bound and form.is_valid():
-        if registro.cliente_ficha_id != cliente_anterior and registro.solicitudes_cotizacion.exists():
-            form.add_error("cliente_ficha", "El ticket tiene solicitudes de cotización asociadas. Conservá su cliente.")
+        if (registro.cliente_ficha_id, registro.planta_ficha_id) != (cliente_anterior, planta_anterior) and (
+            registro.acciones.filter(visitas_agendadas__isnull=False).exists()
+            or registro.pedidos_servicio.filter(visitas__isnull=False).exists()
+        ):
+            form.add_error("planta_ficha", "El ticket está vinculado a una visita. Conservá su cliente y planta.")
+        elif registro.cliente_ficha_id != cliente_anterior and (
+            registro.solicitudes_cotizacion.exists() or registro.cotizaciones.exists()
+            or registro.pedidos_servicio.exists() or registro.solicitudes_facturacion.exists()
+        ):
+            form.add_error("cliente_ficha", "El ticket tiene solicitudes, cotizaciones o pedidos asociados. Conservá su cliente.")
         else:
             form.instance.save(update_fields=VinculoTicketForm.Meta.fields)
             return redirect("ticket", pk=pk)
@@ -125,10 +138,14 @@ def vincular_ticket(request, pk):
 def ver_ticket(request, registro, form, estado_form=None, accion_id=None):
     acciones = registro.acciones.select_related("responsable", "asignada_por", "realizada_por").prefetch_related(
         Prefetch("cambios", queryset=CambioAccion.objects.select_related("autor")),
+        "resultados_visita__visita",
     ).order_by("pk")
     return render(request, "servicios/ticket.html", {
         "ticket": registro, "acciones": acciones, "form": form,
         "solicitudes_cotizacion": solicitudes_visibles(request.user).filter(ticket=registro),
+        "cotizaciones": registro.cotizaciones.all(),
+        "solicitudes_facturacion": solicitudes_facturacion_visibles(request.user).filter(ticket=registro),
+        "pedidos": PedidoServicio.objects.filter(Q(ticket=registro) | Q(cotizaciones__ticket=registro)).distinct(),
         "estado_form": estado_form or EstadoForm(auto_id=False), "accion_id": accion_id,
     })
 
@@ -163,7 +180,10 @@ def volver_a_accion(request, accion):
 @transaction.atomic
 def realizar(request, pk):
     propias = Accion.objects.filter(responsable=request.user)
-    accion = get_object_or_404(propias, pk=pk)
+    accion = get_object_or_404(propias.select_for_update(), pk=pk)
+    if not accion.realizada_el and Rol.CAMPO in roles(request.user):
+        if accion.visitas_agendadas.filter(tecnicos=request.user).exists():
+            return redirect("servicios_tecnicos")
     propias.filter(pk=pk, realizada_el__isnull=True).update(
         estado=Accion.Estado.REALIZADA, motivo_espera="",
         realizada_el=timezone.now(), realizada_por=request.user,

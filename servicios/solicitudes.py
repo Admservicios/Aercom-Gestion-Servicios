@@ -69,7 +69,9 @@ def detalle_solicitud(request, registro, revision_form=None, error_estado=None):
     puede_revisar = bool(roles(request.user) & ROLES_REVISION_COTIZACION)
     return render(request, "servicios/solicitud_detalle.html", {
         "solicitud": registro,
+        "cotizaciones": registro.cotizaciones.all(),
         "puede_revisar": puede_revisar and registro.estado == SolicitudCotizacion.Estado.ENVIADA,
+        "puede_cotizar_solicitud": puede_revisar and registro.estado == SolicitudCotizacion.Estado.LISTA,
         "puede_reenviar": (
             registro.solicitante_id == request.user.pk and Rol.RESPONSABLE_TECNICO in roles(request.user)
             and registro.estado == SolicitudCotizacion.Estado.DEVUELTA
@@ -83,7 +85,7 @@ def detalle_solicitud(request, registro, revision_form=None, error_estado=None):
 def detalle(request, pk):
     registro = get_object_or_404(
         solicitudes_visibles(request.user).select_related("ticket__cliente_ficha", "solicitante")
-        .prefetch_related("equipos", "repuestos", "cambios__autor"),
+        .prefetch_related("equipos", "repuestos__solicitudes_precio", "cambios__autor"),
         pk=pk,
     )
     return detalle_solicitud(request, registro)

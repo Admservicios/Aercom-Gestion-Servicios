@@ -1,0 +1,5 @@
+<ul>
+{% for solicitud in solicitudes_facturacion %}
+<li><a href="{% url 'facturacion_trabajo' solicitud.pk %}">SF-{{ solicitud.pk }}</a> · {{ solicitud.get_modalidad_display }} · {{ solicitud.get_estado_display }}</li>
+{% empty %}<li>Sin solicitudes para mostrar.</li>{% endfor %}
+</ul>

@@ -1,0 +1,15 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>{% if es_oficina %}Servicios de técnicos{% else %}Mis visitas{% endif %}</h1>
+{% for visita in pagina %}
+<article>
+  <h2><a href="{% url 'servicio_visita' visita.pk %}">{{ visita.cliente.nombre }} · V-{{ visita.pk }}</a></h2>
+  <p>{{ visita.fecha|date:"d/m/Y" }} · {{ visita.hora_desde|time:"H:i" }} a {{ visita.hora_hasta|time:"H:i" }}
+    {% if visita.planta_id %} · {{ visita.planta.nombre }}{% endif %}</p>
+  {% if es_oficina %}
+  <p>{% for tecnico in visita.tecnicos.all %}{{ tecnico.get_full_name|default:tecnico.username }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
+</article>
+{% empty %}<p>Sin visitas para mostrar.</p>{% endfor %}
+{% include "servicios/paginacion.html" %}
+{% endblock %}

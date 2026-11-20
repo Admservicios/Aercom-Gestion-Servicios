@@ -357,3 +357,404 @@ class CambioSolicitud(models.Model):
 
     class Meta:
         ordering = ("-pk",)
+
+
+class Cotizacion(models.Model):
+    class Estado(models.TextChoices):
+        PREPARACION = "preparacion", "En preparación"
+        ENVIADA = "enviada", "Enviada"
+        APROBADA = "aprobada", "Aprobada"
+        RECHAZADA = "rechazada", "Rechazada"
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="cotizaciones")
+    solicitud = models.ForeignKey(
+        SolicitudCotizacion, on_delete=models.PROTECT, related_name="cotizaciones", blank=True, null=True,
+    )
+    referencia = models.CharField("Referencia de presupuesto", max_length=100, blank=True)
+    alcance = models.TextField()
+    importe = models.DecimalField(
+        max_digits=14, decimal_places=2, blank=True, null=True, validators=[MinValueValidator(0)],
+    )
+    moneda = models.CharField(
+        max_length=3, blank=True, validators=[RegexValidator(r"^[A-Z]{3}\Z", "Ingresá un código como ARS o USD.")],
+    )
+    estado = models.CharField(max_length=12, choices=Estado, default=Estado.PREPARACION)
+    confirmacion_correo = models.CharField("Referencia de confirmación por correo", max_length=240, blank=True)
+    orden_compra = models.CharField("Número o referencia de OC recibida", max_length=120, blank=True)
+
+    class Meta:
+        ordering = ("-pk",)
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(importe__gte=0) | models.Q(importe__isnull=True), name="cotizacion_importe_no_negativo",
+            ),
+        ]
+
+    def clean(self):
+        if self.solicitud_id and self.solicitud.ticket_id != self.ticket_id:
+            raise ValidationError({"solicitud": "La solicitud técnica debe corresponder al ticket de la cotización."})
+
+
+class CambioCotizacion(models.Model):
+    cotizacion = models.ForeignKey(Cotizacion, on_delete=models.CASCADE, related_name="cambios")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    estado = models.CharField(max_length=12, choices=Cotizacion.Estado)
+    nota = models.TextField(blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)
+
+
+class SolicitudPrecio(models.Model):
+    codigo = models.CharField("Código", max_length=80, blank=True)
+    descripcion = models.CharField("Descripción del repuesto o insumo", max_length=160)
+    destinatario = models.CharField(max_length=120)
+    solicitada_el = models.DateField("Fecha de solicitud")
+    solicitante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    cotizacion = models.ForeignKey(
+        Cotizacion, on_delete=models.PROTECT, blank=True, null=True, related_name="solicitudes_precio",
+    )
+    repuesto = models.ForeignKey(
+        RepuestoSolicitud, on_delete=models.SET_NULL, blank=True, null=True, related_name="solicitudes_precio",
+    )
+    anterior = models.ForeignKey(
+        "self", on_delete=models.PROTECT, blank=True, null=True, related_name="actualizaciones",
+    )
+
+    class Meta:
+        ordering = ("-solicitada_el", "-pk")
+
+    def clean(self):
+        if self.solicitada_el and self.solicitada_el > timezone.localdate():
+            raise ValidationError({"solicitada_el": "La fecha de solicitud no puede ser futura."})
+        if self.solicitada_el and self.anterior_id and self.solicitada_el < self.anterior.solicitada_el:
+            raise ValidationError({"solicitada_el": "La actualización no puede ser anterior a la solicitud previa."})
+
+
+class RespuestaPrecio(models.Model):
+    solicitud = models.ForeignKey(SolicitudPrecio, on_delete=models.PROTECT, related_name="respuestas")
+    recibida_el = models.DateField("Fecha de respuesta")
+    fuente = models.CharField("Proveedor o fuente", max_length=160)
+    precio = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
+    moneda = models.CharField(
+        max_length=3, validators=[RegexValidator(r"^[A-Z]{3}\Z", "Ingresá un código como ARS o USD.")],
+    )
+    vigente_hasta = models.DateField("Vigente hasta", blank=True, null=True)
+    respuesta = models.TextField("Detalle o referencia de la respuesta", blank=True)
+    registrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    registrado_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-recibida_el", "-pk")
+        constraints = [
+            models.CheckConstraint(condition=models.Q(precio__gte=0), name="respuesta_precio_no_negativo"),
+            models.CheckConstraint(
+                condition=models.Q(vigente_hasta__isnull=True) | models.Q(vigente_hasta__gte=models.F("recibida_el")),
+                name="respuesta_precio_vigencia_ordenada",
+            ),
+        ]
+
+    def clean(self):
+        errores = {}
+        if self.recibida_el:
+            if self.recibida_el > timezone.localdate():
+                errores["recibida_el"] = "La fecha de respuesta no puede ser futura."
+            elif self.solicitud_id and self.recibida_el < self.solicitud.solicitada_el:
+                errores["recibida_el"] = "La respuesta no puede ser anterior a la solicitud."
+            if self.vigente_hasta and self.vigente_hasta < self.recibida_el:
+                errores["vigente_hasta"] = "La vigencia no puede terminar antes de la respuesta."
+        if errores:
+            raise ValidationError(errores)
+
+
+class PedidoServicio(models.Model):
+    class Tipo(models.TextChoices):
+        SERVICIO = "servicio", "Servicio"
+        REPUESTOS = "repuestos", "Venta de repuestos"
+
+    class Estado(models.TextChoices):
+        PREPARACION = "preparacion", "En preparación"
+        ENVIADO = "enviado", "Enviado"
+        PENDIENTE_AGENDAR = "pendiente_agendar", "Pendiente de agendar"
+        AGENDADO = "agendado", "Agendado"
+        ENTREGADO = "entregado", "Entregado"
+
+    class ModalidadEntrega(models.TextChoices):
+        RETIRO = "retiro", "Retiro en depósito"
+        ENVIO = "envio", "Envío"
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="pedidos_servicio")
+    cotizaciones = models.ManyToManyField(Cotizacion, related_name="pedidos_servicio", blank=True)
+    contrato = models.ForeignKey(
+        ContratoAbono, on_delete=models.PROTECT, related_name="pedidos_servicio", blank=True, null=True,
+    )
+    equipos = models.ManyToManyField(Equipo, related_name="pedidos_servicio", blank=True)
+    referencia = models.CharField("Referencia del pedido", max_length=100, blank=True)
+    tipo = models.CharField(max_length=10, choices=Tipo, default=Tipo.SERVICIO)
+    alcance = models.TextField()
+    indicaciones = models.TextField("Indicaciones y próxima acción", blank=True)
+    modalidad_entrega = models.CharField(max_length=8, choices=ModalidadEntrega, blank=True)
+    estado = models.CharField(max_length=18, choices=Estado, default=Estado.PREPARACION)
+    fecha_agendada = models.DateField(blank=True, null=True)
+
+    class Meta:
+        ordering = ("-pk",)
+
+    @property
+    def destino(self):
+        return "Logística" if self.tipo == self.Tipo.REPUESTOS else "Coordinación"
+
+    @property
+    def siguiente_paso(self):
+        if self.estado == self.Estado.PREPARACION:
+            return f"Enviar a {self.destino}"
+        if self.tipo == self.Tipo.REPUESTOS:
+            return "Entrega registrada" if self.estado == self.Estado.ENTREGADO else "Esperar confirmación de Logística"
+        if self.estado == self.Estado.AGENDADO:
+            return "Realizar el servicio según la Agenda General"
+        return "Confirmar la programación en la Agenda General"
+
+
+class CambioPedidoServicio(models.Model):
+    pedido = models.ForeignKey(PedidoServicio, on_delete=models.CASCADE, related_name="cambios")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    estado = models.CharField(max_length=18, choices=PedidoServicio.Estado)
+    nota = models.TextField(blank=True)
+    referencia = models.CharField(max_length=180, blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)
+
+
+class Visita(models.Model):
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="visitas")
+    planta = models.ForeignKey(Planta, on_delete=models.PROTECT, related_name="visitas", null=True, blank=True)
+    pedidos = models.ManyToManyField(PedidoServicio, related_name="visitas", blank=True)
+    trabajos = models.ManyToManyField(Accion, related_name="visitas_agendadas", blank=True)
+    tecnicos = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="visitas_asignadas")
+    fecha = models.DateField()
+    hora_desde = models.TimeField("Hora de inicio")
+    hora_hasta = models.TimeField("Hora de fin")
+    referencia_excel = models.CharField("Referencia en la Agenda General", max_length=150, blank=True)
+    indicaciones = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("fecha", "hora_desde", "pk")
+        indexes = [models.Index(fields=("fecha", "hora_desde"), name="visita_fecha_horario")]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(hora_hasta__gt=models.F("hora_desde")), name="visita_horario_ordenado",
+            ),
+        ]
+
+    def clean(self):
+        errores = {}
+        if self.hora_desde and self.hora_hasta and self.hora_hasta <= self.hora_desde:
+            errores["hora_hasta"] = "La hora de fin debe ser posterior a la de inicio."
+        if self.planta_id and self.planta.cliente_id != self.cliente_id:
+            errores["planta"] = "La planta debe pertenecer al cliente de la visita."
+        if errores:
+            raise ValidationError(errores)
+
+
+class MovimientoAgenda(models.Model):
+    visita = models.ForeignKey(Visita, on_delete=models.CASCADE, related_name="movimientos")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    fecha = models.DateField()
+    hora_desde = models.TimeField()
+    hora_hasta = models.TimeField()
+    referencia_excel = models.CharField(max_length=150, blank=True)
+    motivo = models.CharField(max_length=300, blank=True)
+    registrado_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)
+
+
+class ResultadoTrabajoVisita(models.Model):
+    class Estado(models.TextChoices):
+        REALIZADO = "realizado", "Realizado"
+        PARCIAL = "parcial", "Parcial"
+        PENDIENTE = "pendiente", "Pendiente"
+
+    visita = models.ForeignKey(Visita, on_delete=models.PROTECT, related_name="resultados")
+    trabajo = models.ForeignKey(Accion, on_delete=models.PROTECT, related_name="resultados_visita")
+    responsable = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    estado = models.CharField(max_length=10, choices=Estado)
+    observacion = models.CharField("Observación", max_length=240, blank=True)
+    referencia_sap = models.CharField("Reporte o llamada SAP", max_length=100, blank=True)
+    registrado_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("visita", "trabajo"), name="resultado_unico_por_visita_y_trabajo"),
+        ]
+
+
+class FacturacionMensualAbono(models.Model):
+    class Estado(models.TextChoices):
+        PENDIENTE = "pendiente", "Pendiente de facturar"
+        FACTURADA = "facturada", "Facturada"
+        NO_CORRESPONDE = "no_corresponde", "No corresponde"
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="facturacion_mensual")
+    periodo = models.DateField()
+    contrato = models.ForeignKey(ContratoAbono, on_delete=models.PROTECT, blank=True, null=True)
+    estado = models.CharField(max_length=14, choices=Estado, default=Estado.PENDIENTE)
+    fecha_prevista = models.DateField("Fecha prevista de facturación", blank=True, null=True)
+    modalidad = models.CharField("Modalidad de facturación", max_length=140, blank=True)
+    importe = models.DecimalField(
+        max_digits=14, decimal_places=2, blank=True, null=True, validators=[MinValueValidator(0)],
+    )
+    moneda = models.CharField(
+        max_length=3, blank=True, validators=[RegexValidator(r"^[A-Z]{3}\Z", "Ingresá un código como ARS o USD.")],
+    )
+    ajuste = models.CharField("Ajuste aplicado o criterio", max_length=240, blank=True)
+    requiere_oc = models.BooleanField("Requiere orden de compra (OC)", default=False)
+    requiere_hes = models.BooleanField("Requiere hoja de entrada de servicios (HES)", default=False)
+    orden_compra = models.CharField("Referencia OC", max_length=120, blank=True)
+    hes = models.CharField("Referencia HES", max_length=120, blank=True)
+    portal = models.CharField(max_length=200, blank=True)
+    observaciones = models.TextField(blank=True)
+    factura_sap = models.CharField("Referencia de factura en SAP", max_length=120, blank=True)
+    fecha_factura = models.DateField("Fecha de emisión en SAP", blank=True, null=True)
+    actualizado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    actualizado_el = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-periodo", "-pk")
+        constraints = [
+            models.UniqueConstraint(fields=("cliente", "periodo"), name="facturacion_abono_unica_por_periodo"),
+            models.CheckConstraint(condition=models.Q(periodo__day=1), name="facturacion_abono_inicio_de_mes"),
+            models.CheckConstraint(
+                condition=models.Q(importe__gte=0) | models.Q(importe__isnull=True), name="facturacion_abono_importe_no_negativo",
+            ),
+        ]
+
+    def clean(self):
+        errores = {}
+        if self.estado != self.Estado.NO_CORRESPONDE and not self.contrato_id:
+            errores["estado"] = "Seleccioná un contrato del período para registrar facturación."
+        if self.contrato_id and self.contrato.cliente_id != self.cliente_id:
+            errores["estado"] = "El contrato debe pertenecer al cliente de la facturación."
+        if self.estado == self.Estado.NO_CORRESPONDE and not self.observaciones:
+            errores["observaciones"] = "Indicá por qué no corresponde facturar este período."
+        if self.estado == self.Estado.FACTURADA:
+            if not self.factura_sap:
+                errores["factura_sap"] = "Ingresá la referencia de la factura emitida en SAP."
+            if not self.fecha_factura:
+                errores["fecha_factura"] = "Ingresá la fecha de emisión."
+            if self.importe is None:
+                errores["importe"] = "Ingresá el importe facturado."
+            if not self.moneda:
+                errores["moneda"] = "Ingresá la moneda de la factura."
+        elif self.factura_sap or self.fecha_factura:
+            errores["estado"] = "Marcá Facturada si ya registraste el comprobante de SAP."
+        if self.fecha_factura and self.fecha_factura > timezone.localdate():
+            errores["fecha_factura"] = "La fecha de emisión no puede ser futura."
+        if errores:
+            raise ValidationError(errores)
+
+
+class SolicitudFacturacionTrabajo(models.Model):
+    class Modalidad(models.TextChoices):
+        PREVIA = "previa", "Antes de la ejecución"
+        POSTERIOR = "posterior", "Después de la ejecución"
+        ABONO = "abono", "Incluida en el abono"
+
+    class Estado(models.TextChoices):
+        SOLICITADA = "solicitada", "Solicitada"
+        EN_ESPERA = "en_espera", "Documentación pendiente"
+        FACTURADA = "facturada", "Facturada"
+        CUBIERTA = "cubierta", "Cubierta por el abono"
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="solicitudes_facturacion")
+    pedido = models.ForeignKey(
+        PedidoServicio, on_delete=models.PROTECT, blank=True, null=True, related_name="solicitudes_facturacion",
+    )
+    cotizacion = models.ForeignKey(
+        Cotizacion, on_delete=models.PROTECT, blank=True, null=True, related_name="solicitudes_facturacion",
+    )
+    trabajos = models.ManyToManyField(Accion, related_name="solicitudes_facturacion", blank=True)
+    solicitante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    creada_el = models.DateTimeField(auto_now_add=True)
+    modalidad = models.CharField(max_length=10, choices=Modalidad)
+    estado = models.CharField(max_length=12, choices=Estado, default=Estado.SOLICITADA)
+    referencia_presupuesto = models.CharField("Referencia de presupuesto", max_length=120, blank=True)
+    orden_compra = models.CharField("Referencia de OC", max_length=120, blank=True)
+    correo_envio = models.EmailField("Correo de envío", blank=True)
+    centro_costo = models.CharField("Centro de costo", max_length=100, blank=True)
+    moneda = models.CharField(
+        max_length=3, blank=True, validators=[RegexValidator(r"^[A-Z]{3}\Z", "Ingresá un código como ARS o USD.")],
+    )
+    referencia_cambio = models.CharField("Cambio o referencia cambiaria", max_length=120, blank=True)
+    tipo_comprobante = models.CharField(max_length=100, blank=True)
+    hes = models.CharField("Referencia HES", max_length=120, blank=True)
+    portal = models.CharField(max_length=200, blank=True)
+    documentacion_faltante = models.TextField("Documentación faltante", blank=True)
+    observaciones = models.TextField(blank=True)
+    factura_sap = models.CharField("Referencia de factura en SAP", max_length=120, blank=True)
+    fecha_factura = models.DateField("Fecha de emisión en SAP", blank=True, null=True)
+    cobranza_aplica = models.BooleanField("Corresponde seguir la cobranza", default=False)
+    referencia_cobro = models.CharField("Referencia de cobro", max_length=120, blank=True)
+    fecha_cobro = models.DateField(blank=True, null=True)
+
+    class Meta:
+        ordering = ("-pk",)
+
+    @property
+    def estado_cobranza(self):
+        if not self.cobranza_aplica:
+            return "No aplica"
+        return "Cobrada" if self.fecha_cobro else "Pendiente de cobro"
+
+    def actualizar_estado(self):
+        if self.modalidad == self.Modalidad.ABONO:
+            self.estado = self.Estado.CUBIERTA
+        elif self.factura_sap:
+            self.estado = self.Estado.FACTURADA
+        elif self.documentacion_faltante:
+            self.estado = self.Estado.EN_ESPERA
+        else:
+            self.estado = self.Estado.SOLICITADA
+
+    def clean(self):
+        errores = {}
+        if self.modalidad == self.Modalidad.ABONO and self.ticket_id:
+            if self.ticket.cliente_ficha.tipo != Cliente.Tipo.ABONADO:
+                errores["modalidad"] = "La cobertura del abono solo corresponde a clientes abonados."
+            if self.factura_sap or self.fecha_factura:
+                errores["factura_sap"] = "Un trabajo cubierto por el abono no lleva una factura puntual."
+            if self.cobranza_aplica:
+                errores["cobranza_aplica"] = "Un trabajo cubierto por el abono no tiene cobranza puntual."
+        if self.factura_sap and not self.fecha_factura:
+            errores["fecha_factura"] = "Ingresá la fecha de emisión en SAP."
+        if self.fecha_factura and not self.factura_sap:
+            errores["factura_sap"] = "Ingresá la referencia del comprobante en SAP."
+        if self.fecha_factura and self.fecha_factura > timezone.localdate():
+            errores["fecha_factura"] = "La fecha de emisión no puede ser futura."
+        if self.fecha_cobro or self.referencia_cobro:
+            if not self.cobranza_aplica:
+                errores["cobranza_aplica"] = "Indicá que corresponde seguir la cobranza."
+            if not self.fecha_cobro:
+                errores["fecha_cobro"] = "Ingresá la fecha de cobro."
+            elif self.fecha_cobro > timezone.localdate():
+                errores["fecha_cobro"] = "La fecha de cobro no puede ser futura."
+            if not self.referencia_cobro:
+                errores["referencia_cobro"] = "Ingresá la referencia del cobro."
+        if errores:
+            raise ValidationError(errores)
+
+
+class MovimientoFacturacionTrabajo(models.Model):
+    solicitud = models.ForeignKey(SolicitudFacturacionTrabajo, on_delete=models.CASCADE, related_name="movimientos")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    estado = models.CharField(max_length=12, choices=SolicitudFacturacionTrabajo.Estado)
+    nota = models.TextField(blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)

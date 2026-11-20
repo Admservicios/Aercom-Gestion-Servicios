@@ -10,7 +10,13 @@
 <p class="estado hecha">Realizada · {{ accion.realizada_el|date:"d/m/Y H:i" }}</p>
 {% else %}
 <p class="estado pendiente">{{ accion.get_estado_display }}{% if accion.motivo_espera %} · {{ accion.motivo_espera }}{% endif %}</p>
+{% if accion.mis_visitas %}
+<ul>{% for visita in accion.mis_visitas %}
+  <li><a href="{% url 'servicio_visita' visita.pk %}#trabajo-{{ accion.pk }}">Ver en visita del {{ visita.fecha|date:"d/m/Y" }}</a></li>
+{% endfor %}</ul>
+{% else %}
 {% include "servicios/actualizar_accion.html" %}
+{% endif %}
 {% endif %}
 </article>
 {% empty %}<p>Por ahora no tenés tareas asignadas.</p>{% endfor %}

@@ -1,0 +1,16 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p>{% if solicitud.pk %}<a href="{% url 'facturacion_trabajo' solicitud.pk %}">Volver a SF-{{ solicitud.pk }}</a>
+{% else %}<a href="{% url 'ticket' solicitud.ticket_id %}">Volver al ticket T-{{ solicitud.ticket_id }}</a>{% endif %}</p>
+<h1>{{ titulo }}</h1>
+<p>{{ solicitud.ticket.cliente_nombre }} · {{ solicitud.ticket.asunto }}</p>
+{% if conflicto %}<p role="alert">{{ conflicto }}</p>{% endif %}
+<article>
+  <form method="post">
+    {% csrf_token %}
+    {% if solicitud.pk %}<input type="hidden" name="version" value="{{ version }}">{% endif %}
+    {{ form.as_p }}
+    <button>Guardar</button>
+  </form>
+</article>
+{% endblock %}

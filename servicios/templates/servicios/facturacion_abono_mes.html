@@ -1,0 +1,32 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'facturacion_abonos' %}?periodo={{ mes }}">Volver a facturación del período</a></p>
+<p class="contexto">{{ mes }}{% if not es_nuevo %} · {{ registro.get_estado_display }}{% endif %}</p>
+<h1>{{ cliente.nombre }}</h1>
+{% if contrato %}<p>Contrato de referencia: <a href="{% url 'contrato_abono' cliente.pk contrato.pk %}">{{ contrato.referencia }}</a></p>{% endif %}
+{% if opciones_contrato|length > 1 or opciones_contrato and not contrato %}
+<article>
+  <form method="get">
+    <label for="contrato">Contrato para preparar el período</label>
+    <select name="contrato" id="contrato" required>
+      <option value="">Elegí un contrato</option>
+      {% for opcion in opciones_contrato %}
+      <option value="{{ opcion.pk }}"{% if opcion.pk == contrato.pk %} selected{% endif %}>{{ opcion.referencia }} · desde {{ opcion.vigente_desde|date:"d/m/Y" }}</option>
+      {% endfor %}
+    </select>
+    <button>Cargar datos del contrato</button>
+  </form>
+</article>
+{% endif %}
+<article>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="version" value="{{ version }}">
+    {{ form.as_p }}
+    <button>Guardar período</button>
+  </form>
+  {% if not es_nuevo %}
+  <p class="contexto">Última actualización: {{ registro.actualizado_el|date:"d/m/Y H:i" }} · {{ registro.actualizado_por.get_full_name|default:registro.actualizado_por.username }}</p>
+  {% endif %}
+</article>
+{% endblock %}

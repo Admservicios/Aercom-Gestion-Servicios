@@ -1,0 +1,51 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'facturacion_trabajos' %}">Volver a facturación de trabajos</a></p>
+<p class="contexto" id="estado-facturacion">SF-{{ solicitud.pk }} · {{ solicitud.get_estado_display }}</p>
+<h1>{{ solicitud.ticket.asunto }}</h1>
+<p><a href="{% url 'cliente' solicitud.ticket.cliente_ficha_id %}">{{ solicitud.ticket.cliente_nombre }}</a>
+· <a href="{% url 'ticket' solicitud.ticket_id %}">Ticket T-{{ solicitud.ticket_id }}</a>
+{% if solicitud.pedido_id %} · <a href="{% url 'pedido_servicio' solicitud.pedido_id %}">Pedido PS-{{ solicitud.pedido_id }}</a>{% endif %}</p>
+<p>Solicitó {{ solicitud.solicitante.get_full_name|default:solicitud.solicitante.username }} · {{ solicitud.creada_el|date:"d/m/Y H:i" }}</p>
+{% if puede_facturar_abonos %}<p><a class="boton" href="{% url 'actualizar_facturacion_trabajo' solicitud.pk %}">Actualizar facturación</a></p>{% endif %}
+<article>
+  <h2>Documentación y comprobante</h2>
+  <dl>
+    <dt>Modalidad</dt><dd>{{ solicitud.get_modalidad_display }}</dd>
+    {% if solicitud.cotizacion_id or solicitud.referencia_presupuesto %}
+    <dt>Presupuesto</dt><dd>{% if solicitud.cotizacion_id %}<a href="{% url 'cotizacion' solicitud.cotizacion_id %}">C-{{ solicitud.cotizacion_id }}</a>{% endif %}
+    {{ solicitud.referencia_presupuesto }}</dd>{% endif %}
+    {% if solicitud.orden_compra %}<dt>OC</dt><dd>{{ solicitud.orden_compra }}</dd>{% endif %}
+    {% if solicitud.correo_envio %}<dt>Correo de envío</dt><dd>{{ solicitud.correo_envio }}</dd>{% endif %}
+    {% if solicitud.centro_costo %}<dt>Centro de costo</dt><dd>{{ solicitud.centro_costo }}</dd>{% endif %}
+    {% if solicitud.moneda or solicitud.referencia_cambio %}<dt>Moneda y cambio</dt><dd>{{ solicitud.moneda }} {{ solicitud.referencia_cambio }}</dd>{% endif %}
+    {% if solicitud.tipo_comprobante %}<dt>Tipo de comprobante</dt><dd>{{ solicitud.tipo_comprobante }}</dd>{% endif %}
+    {% if solicitud.hes %}<dt>HES</dt><dd>{{ solicitud.hes }}</dd>{% endif %}
+    {% if solicitud.portal %}<dt>Portal</dt><dd>{{ solicitud.portal }}</dd>{% endif %}
+    {% if solicitud.factura_sap %}<dt>Factura SAP</dt><dd>{{ solicitud.factura_sap }} · {{ solicitud.fecha_factura|date:"d/m/Y" }}</dd>{% endif %}
+  </dl>
+  {% with trabajos=solicitud.trabajos.all %}
+  {% if trabajos %}
+  <h3>Trabajos incluidos</h3>
+  <ul>{% for trabajo in trabajos %}
+    <li><a href="{% url 'ticket' trabajo.ticket_id %}#accion-{{ trabajo.pk }}">{{ trabajo.titulo }}</a> · {{ trabajo.get_estado_display }}</li>
+  {% endfor %}</ul>
+  {% endif %}
+  {% endwith %}
+  {% if solicitud.documentacion_faltante %}<h3>Documentación faltante</h3>{{ solicitud.documentacion_faltante|linebreaks }}{% endif %}
+  {% if solicitud.observaciones %}<h3>Observaciones</h3>{{ solicitud.observaciones|linebreaks }}{% endif %}
+</article>
+{% if solicitud.cobranza_aplica %}
+<article>
+  <h2>Cobranza</h2>
+  <p>{{ solicitud.estado_cobranza }}{% if solicitud.fecha_cobro %} · {{ solicitud.fecha_cobro|date:"d/m/Y" }} · {{ solicitud.referencia_cobro }}{% endif %}</p>
+</article>
+{% endif %}
+<article>
+  <h2>Historial</h2>
+  <ul>{% for cambio in solicitud.movimientos.all %}
+  <li>{{ cambio.get_estado_display }} · {{ cambio.autor.get_full_name|default:cambio.autor.username }} · {{ cambio.fecha|date:"d/m/Y H:i" }}
+    {% if cambio.nota %}<br>{{ cambio.nota|linebreaksbr }}{% endif %}</li>
+  {% endfor %}</ul>
+</article>
+{% endblock %}

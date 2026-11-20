@@ -1,0 +1,26 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>Facturación mensual de abonos</h1>
+<article><form method="get">{{ form.as_p }}<button>Consultar período</button></form></article>
+{% for cliente in pagina %}
+{% with control=cliente.control_del_mes.0 %}
+<article>
+  <h2><a href="{% url 'facturacion_abono_mes' periodo cliente.pk %}">{{ cliente.nombre }}</a></h2>
+  {% if control %}
+  <p>{{ control.get_estado_display }}{% if control.importe is not None %} · {{ control.moneda }} {{ control.importe|floatformat:2 }}{% endif %}</p>
+  {% if control.fecha_prevista or control.modalidad %}
+  <p>{% if control.fecha_prevista %}Fecha prevista: {{ control.fecha_prevista|date:"d/m/Y" }}{% endif %}
+    {% if control.modalidad %} {{ control.modalidad }}{% endif %}</p>
+  {% endif %}
+  {% if control.factura_sap %}<p>Factura SAP {{ control.factura_sap }}</p>{% endif %}
+  {% if control.estado == "pendiente" %}
+    {% if control.requiere_oc and not control.orden_compra %}<p>OC pendiente</p>{% endif %}
+    {% if control.requiere_hes and not control.hes %}<p>HES pendiente</p>{% endif %}
+  {% endif %}
+  {% elif cliente.tiene_contrato %}<p>Contrato con vigencia en el período · Pendiente de revisión</p>
+  {% else %}<p>Sin contrato con vigencia en el período · Sin registro</p>{% endif %}
+</article>
+{% endwith %}
+{% empty %}<p>Sin abonados para mostrar en esta búsqueda.</p>{% endfor %}
+{% include "servicios/paginacion.html" %}
+{% endblock %}
