@@ -2,26 +2,30 @@
 {% block contenido %}
 <h1>{% if puede_facturar_abonos %}Facturación de trabajos{% else %}Mis solicitudes de facturación{% endif %}</h1>
 <p>Para registrar una solicitud, abrí el ticket o el pedido asociado al trabajo.</p>
-<article>
-  <form method="get">
-    <label for="q">Buscar por cliente, asunto, OC o factura SAP</label>
-    <input id="q" name="q" value="{{ consulta }}">
-    <label for="estado">Estado</label>
-    <select id="estado" name="estado">
-      <option value="">Todos</option>
-      {% for valor, etiqueta in estados %}
-      <option value="{{ valor }}"{% if estado == valor %} selected{% endif %}>{{ etiqueta }}</option>
-      {% endfor %}
-    </select>
+<article class="tarjeta-listado">
+  <form class="filtros-listado" method="get">
+    <div class="campo-busqueda">
+      <label for="q">Buscar por cliente, asunto, OC o factura SAP</label>
+      <input id="q" name="q" value="{{ consulta }}">
+    </div>
+    <div>
+      <label for="estado">Estado</label>
+      <select id="estado" name="estado">
+        <option value="">Todos</option>
+        {% for valor, etiqueta in estados %}
+        <option value="{{ valor }}"{% if estado == valor %} selected{% endif %}>{{ etiqueta }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <button>Buscar</button>
   </form>
-  <ul>
+  <ul class="filas-listado">
     {% for solicitud in pagina %}
     <li><a href="{% url 'facturacion_trabajo' solicitud.pk %}">SF-{{ solicitud.pk }} · {{ solicitud.ticket.asunto }}</a>
-      · {{ solicitud.ticket.cliente_nombre }} · {{ solicitud.get_estado_display }} · {{ solicitud.get_modalidad_display }}
-      <br>Solicitó {{ solicitud.solicitante.get_full_name|default:solicitud.solicitante.username }} · {{ solicitud.creada_el|date:"d/m/Y" }}
+      <small>{{ solicitud.ticket.cliente_nombre }} · {{ solicitud.get_estado_display }} · {{ solicitud.get_modalidad_display }}
+      </small><small>Solicitó {{ solicitud.solicitante.get_full_name|default:solicitud.solicitante.username }} · {{ solicitud.creada_el|date:"d/m/Y" }}
       {% if solicitud.cobranza_aplica %} · {{ solicitud.estado_cobranza }}{% endif %}
-      {% if solicitud.documentacion_faltante %}<br>Falta: {{ solicitud.documentacion_faltante|truncatechars:120 }}{% endif %}</li>
+      </small>{% if solicitud.documentacion_faltante %}<small>Falta {{ solicitud.documentacion_faltante|truncatechars:120 }}</small>{% endif %}</li>
     {% empty %}<li>Sin solicitudes para mostrar.</li>{% endfor %}
   </ul>
   {% include "servicios/paginacion.html" %}

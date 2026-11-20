@@ -7,11 +7,11 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .campo_servicios import visitas_de_campo
-from .facturacion_trabajos import solicitudes_facturacion_visibles
+from .facturacion_trabajos import ESTADOS_ABIERTOS, solicitudes_facturacion_visibles
 from .forms import TicketForm, VinculoTicketForm
 from .models import Accion, CambioAccion, CategoriaEspera, MovimientoTiempoAccion, PedidoServicio, Recordatorio, Ticket, Visita
 from .permisos import Rol, es_oficina, oficina_requerida, roles, servicios_requeridos
-from .seguimiento import ResponsableField, responsables_disponibles, respuesta_accion_bloqueada
+from .seguimiento import ResponsableField, acciones_pendientes, responsables_disponibles, respuesta_accion_bloqueada
 from .solicitudes import solicitudes_visibles
 from .tiempos import registrar_movimiento
 
@@ -71,7 +71,20 @@ def inicio(request):
         return ver_campo(request)
     if "q" in request.GET or "responsable" in request.GET:
         return redirect(f"{reverse('tickets')}?{request.GET.urlencode()}")
-    return render(request, "servicios/menu_oficina.html")
+    hoy = timezone.localdate()
+    visitas = Visita.objects.filter(fecha=hoy).select_related("cliente", "planta").prefetch_related("tecnicos")
+    pendientes = acciones_pendientes().select_related(
+        "ticket__cliente_ficha", "responsable", "depende_de",
+    ).order_by("-asignada_el", "-pk")
+    facturacion = solicitudes_facturacion_visibles(request.user).filter(
+        estado__in=ESTADOS_ABIERTOS,
+    ).select_related("ticket__cliente_ficha")
+    return render(request, "servicios/menu_oficina.html", {
+        "hoy": hoy,
+        "total_visitas": visitas.count(), "visitas_hoy": visitas[:3],
+        "total_pendientes": pendientes.count(), "pendientes": pendientes[:3],
+        "total_facturacion": facturacion.count(), "solicitudes_abiertas": facturacion[:3],
+    })
 
 
 @oficina_requerida

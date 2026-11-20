@@ -50,12 +50,16 @@ class DocumentosTicketForm(forms.ModelForm):
         campo.label_from_instance = lambda item: f"{item.tipo} · {item.referencia}"
 
 
+def acciones_pendientes():
+    return Accion.objects.filter(realizada_el__isnull=True)
+
+
 @oficina_requerida
 def pendientes(request):
     form = FiltroPendientesForm(request.GET)
     acciones = Accion.objects.none()
     if form.is_valid():
-        acciones = Accion.objects.filter(realizada_el__isnull=True).select_related(
+        acciones = acciones_pendientes().select_related(
             "responsable", "depende_de", "ticket__cliente_ficha", "ticket__equipo_ficha",
         ).order_by("-asignada_el", "-pk")
         datos = form.cleaned_data

@@ -3,6 +3,8 @@ from functools import wraps
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 
+from .navegacion import navegacion_oficina
+
 
 class Rol:
     RESPONSABLE = "Responsable del área"
@@ -62,7 +64,7 @@ registro_mantenimiento_requerido = requiere_roles(ROLES_REGISTRO_MANTENIMIENTO)
 
 def menu_por_rol(request):
     asignados = roles(request.user)
-    return {
+    permisos = {
         "es_oficina": bool(asignados & ROLES_OFICINA),
         "es_campo": Rol.CAMPO in asignados,
         "puede_gestionar_cotizaciones": bool(asignados & ROLES_REVISION_COTIZACION),
@@ -75,3 +77,9 @@ def menu_por_rol(request):
         "puede_editar_catalogo": bool(asignados & ROLES_EDICION_CATALOGO),
         "puede_registrar_mantenimiento": bool(asignados & ROLES_REGISTRO_MANTENIMIENTO),
     }
+
+    vista = request.resolver_match.url_name if request.resolver_match else None
+    # La pantalla para el televisor conserva su formato de ancho completo.
+    if permisos["es_oficina"] and vista != "pantalla_oficina":
+        permisos["navegacion_oficina"] = navegacion_oficina(vista, permisos)
+    return permisos

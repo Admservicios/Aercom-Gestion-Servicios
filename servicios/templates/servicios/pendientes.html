@@ -1,9 +1,9 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
 <h1>Pendientes</h1>
-<article><form method="get">{{ form.as_p }}<button>Buscar pendientes</button></form></article>
+<article><form class="filtros-listado" method="get">{{ form.as_p }}<button>Buscar pendientes</button></form></article>
 {% for accion in pagina %}
-<article>
+<article class="registro-listado">
   <h2><a href="{% url 'ticket' accion.ticket_id %}#accion-{{ accion.pk }}">{{ accion.titulo }}</a></h2>
   <p>T-{{ accion.ticket_id }} · {{ accion.ticket.asunto }} · {{ accion.ticket.cliente_nombre }}{% if accion.ticket.equipo_nombre %} · {{ accion.ticket.equipo_nombre }}{% endif %}</p>
   <p>{{ accion.get_estado_display }}{% if accion.bloqueada_por_previa %} · Espera una acción previa{% endif %}

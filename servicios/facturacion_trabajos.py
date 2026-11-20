@@ -10,6 +10,7 @@ from .permisos import ROLES_FACTURACION, oficina_requerida, requiere_roles, role
 
 Estado = SolicitudFacturacionTrabajo.Estado
 Modalidad = SolicitudFacturacionTrabajo.Modalidad
+ESTADOS_ABIERTOS = (Estado.SOLICITADA, Estado.EN_ESPERA)
 gestion_requerida = requiere_roles(ROLES_FACTURACION)
 datos_comprobante = (
     "referencia_presupuesto", "orden_compra", "correo_envio", "centro_costo", "moneda", "referencia_cambio",
@@ -108,11 +109,13 @@ def lista(request):
             Q(ticket__cliente_ficha__nombre__icontains=consulta) | Q(ticket__asunto__icontains=consulta)
             | Q(orden_compra__icontains=consulta) | Q(factura_sap__icontains=consulta),
         )
-    if estado in Estado.values:
+    if estado == "abiertas":
+        registros = registros.filter(estado__in=ESTADOS_ABIERTOS)
+    elif estado in Estado.values:
         registros = registros.filter(estado=estado)
     return render(request, "servicios/facturacion_trabajos_lista.html", {
         "pagina": Paginator(registros, 30).get_page(request.GET.get("page")), "consulta": consulta,
-        "estado": estado, "estados": Estado.choices,
+        "estado": estado, "estados": [("abiertas", "Abiertas"), *Estado.choices],
     })
 
 
