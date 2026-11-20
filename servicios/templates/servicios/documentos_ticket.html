@@ -1,0 +1,11 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'ticket' ticket.pk %}">Volver al ticket T-{{ ticket.pk }}</a></p>
+<h1>Vincular documentos</h1>
+<p>{{ ticket.cliente_nombre }} · {{ ticket.asunto }}</p>
+{% if form.documentos.field.queryset %}
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Guardar vínculos</button></form></article>
+{% else %}
+<p>El cliente todavía no tiene documentos registrados. Consultá su <a href="{% url 'cliente' ticket.cliente_ficha_id %}">ficha de cliente</a>.</p>
+{% endif %}
+{% endblock %}

@@ -984,6 +984,15 @@ class ServiciosTecnicosTest(TestCase):
         self.trabajo.refresh_from_db()
         self.assertEqual(self.trabajo.estado, Accion.Estado.REALIZADA)
 
+    def test_visita_respeta_la_accion_previa(self):
+        self.trabajo.depende_de = self.otro_trabajo
+        self.trabajo.save(update_fields=["depende_de"])
+        self.client.force_login(self.tecnico)
+        self.assertContains(self.client.get(self.alta), "Registrar resultado")
+        respuesta = self.client.post(self.alta, {"estado": "realizado"})
+        self.assertContains(respuesta, "Completá primero la acción previa")
+        self.assertFalse(ResultadoTrabajoVisita.objects.exists())
+
     def test_acceso_directo_a_visita_o_trabajo_ajeno(self):
         self.client.force_login(self.ajeno)
         self.assertNotContains(self.client.get(reverse("servicios_tecnicos")), self.detalle)
@@ -1239,3 +1248,70 @@ class CierreAdministrativoTest(TestCase):
         self.assertContains(self.client.get(reverse("cierre_administrativo")), llamada.referencia)
         self.assertEqual(self.client.post(reverse("cerrar_llamada_sap", args=[llamada.pk])).status_code, 403)
         self.assertEqual(self.client.post(self.alta, self.datos).status_code, 403)
+
+
+class SeguimientoTicketTest(TestCase):
+    def setUp(self):
+        self.oficina = User.objects.create_user("oficina.seguimiento")
+        self.oficina.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.tecnico = User.objects.create_user("tecnico.seguimiento")
+        self.tecnico.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(self.oficina)
+        self.cliente = Cliente.objects.create(codigo="AB-71", nombre="Cliente ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.equipo = self.cliente.equipos.create(codigo="EQ-71", nombre="Generador ficticio")
+        self.ticket = Ticket.objects.create(
+            asunto="Seguimiento ficticio", cliente_ficha=self.cliente, equipo_ficha=self.equipo, creado_por=self.oficina,
+        )
+        self.previa = self.ticket.acciones.create(titulo="Revisar vibración", responsable=self.oficina)
+        self.paralela = self.ticket.acciones.create(titulo="Lavado incluido", responsable=self.tecnico)
+        self.alta = reverse("agregar", args=[self.ticket.pk])
+        self.datos = {"titulo": "Preparar presupuesto", "responsable": self.oficina.pk, "tipo": "tarea", "facturacion": "a_definir"}
+
+    def test_secuencia_y_accion_paralela_en_bandeja(self):
+        respuesta = self.client.post(self.alta, {
+            **self.datos, "proximo_paso": "Presupuestar el repuesto", "depende_de": self.previa.pk,
+        })
+        detalle = reverse("ticket", args=[self.ticket.pk])
+        self.assertRedirects(respuesta, detalle)
+        siguiente = self.ticket.acciones.get(titulo="Preparar presupuesto")
+        realizar = reverse("realizar", args=[siguiente.pk])
+        estado = reverse("cambiar_estado", args=[siguiente.pk])
+        tablero = reverse("pendientes")
+        filtro = {"q": "EQ-71", "responsable": self.oficina.pk}
+        self.assertContains(self.client.get(tablero, filtro), "Espera una acción previa")
+        self.assertNotContains(self.client.get(tablero, filtro), self.paralela.titulo)
+        self.assertEqual(self.client.post(realizar).status_code, 409)
+        self.assertContains(self.client.post(estado, {"estado": "en_curso"}), "Completá primero la acción previa")
+        self.client.force_login(self.tecnico)
+        self.assertRedirects(self.client.post(reverse("realizar", args=[self.paralela.pk])), reverse("inicio"))
+        self.client.force_login(self.oficina)
+        self.client.post(reverse("realizar", args=[self.previa.pk]))
+        self.assertContains(self.client.get(tablero, filtro), "Presupuestar el repuesto")
+        self.assertRedirects(self.client.post(realizar), detalle)
+        self.assertNotContains(self.client.get(tablero, filtro), siguiente.titulo)
+
+    def test_proximo_paso_documentos_visitas_y_permisos(self):
+        documento = self.cliente.documentos.create(tipo="Presupuesto", referencia="P-FICTICIO-71")
+        ajeno = Cliente.objects.create(codigo="TE-71", nombre="Otro cliente", tipo=Cliente.Tipo.TERCERO)
+        externo = ajeno.documentos.create(tipo="OC", referencia="OC-AJENA")
+        extra = Ticket.objects.create(asunto="Ticket ajeno", cliente_ficha=ajeno, creado_por=self.oficina)
+        otra_accion = extra.acciones.create(titulo="Otra acción", responsable=self.oficina)
+        respuesta = self.client.post(self.alta, {**self.datos, "depende_de": otra_accion.pk})
+        self.assertTrue(respuesta.context["form"].has_error("depende_de", "invalid_choice"))
+
+        vincular = reverse("documentos_ticket", args=[self.ticket.pk])
+        self.assertTrue(self.client.post(vincular, {"documentos": [externo.pk]}).context["form"].has_error("documentos"))
+        self.client.post(vincular, {"documentos": [documento.pk]})
+        visita = Visita.objects.create(cliente=self.cliente, fecha=date(2026, 11, 20), hora_desde="09:00", hora_hasta="11:00")
+        visita.trabajos.add(self.paralela)
+        detalle = reverse("ticket", args=[self.ticket.pk])
+        self.assertContains(self.client.get(detalle), documento.referencia)
+        self.assertContains(self.client.get(detalle), reverse("visita", args=[visita.pk]))
+
+        paso = reverse("proximo_paso_accion", args=[self.paralela.pk])
+        self.assertEqual(self.client.post(paso, {"proximo_paso": "Cargar fotos"}).status_code, 404)
+        self.client.force_login(self.tecnico)
+        self.assertRedirects(self.client.post(paso, {"proximo_paso": "Cargar fotos"}), reverse("inicio"))
+        self.assertEqual(self.paralela.cambios.get().proximo_paso, "Cargar fotos")
+        self.assertEqual(self.client.get(vincular).status_code, 403)
+        self.assertEqual(self.client.get(reverse("pendientes")).status_code, 403)

@@ -25,6 +25,7 @@
   <p>La acción ya se completó. Esta visita no tiene un resultado registrado para ella.</p>
   {% else %}
   <p>Pendiente de registrar resultado.</p>
+  <p>Próximo paso: {{ trabajo.siguiente_paso }}</p>
   {% if puede_reportar and trabajo.responsable_id == user.pk %}
   <p><a class="boton" href="{% url 'resultado_visita' visita.pk trabajo.pk %}">Registrar resultado</a></p>
   {% endif %}

@@ -1,5 +1,4 @@
 from django import forms
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import F, Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -10,27 +9,29 @@ from django.views.decorators.http import require_POST
 from .campo_servicios import visitas_de_campo
 from .facturacion_trabajos import solicitudes_facturacion_visibles
 from .forms import TicketForm, VinculoTicketForm
-from .models import Accion, CambioAccion, PedidoServicio, Ticket
-from .permisos import ROLES_SERVICIOS, Rol, es_oficina, oficina_requerida, roles, servicios_requeridos
+from .models import Accion, CambioAccion, PedidoServicio, Ticket, Visita
+from .permisos import Rol, es_oficina, oficina_requerida, roles, servicios_requeridos
+from .seguimiento import ResponsableField, responsables_disponibles, respuesta_accion_bloqueada
 from .solicitudes import solicitudes_visibles
-
-
-class ResponsableField(forms.ModelChoiceField):
-    def label_from_instance(self, persona):
-        return persona.get_full_name() or persona.get_username()
 
 
 class AccionForm(forms.ModelForm):
     responsable = ResponsableField(
-        queryset=get_user_model().objects.filter(
-            is_active=True, groups__name__in=ROLES_SERVICIOS,
-        ).order_by("first_name", "username").distinct()
+        queryset=responsables_disponibles(),
     )
 
     class Meta:
         model = Accion
-        fields = ("titulo", "tipo", "detalle", "responsable", "facturacion")
+        fields = ("titulo", "tipo", "detalle", "responsable", "facturacion", "proximo_paso", "depende_de")
         labels = {"titulo": "Acción", "facturacion": "Facturación"}
+        help_texts = {"depende_de": "Dejala vacía para que esta acción pueda avanzar en paralelo."}
+
+    def __init__(self, *args, ticket, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance.ticket = ticket
+        campo = self.fields["depende_de"]
+        campo.queryset = ticket.acciones.order_by("pk")
+        campo.label_from_instance = lambda accion: accion.titulo
 
 
 class EstadoForm(forms.Form):
@@ -49,7 +50,7 @@ class EstadoForm(forms.Form):
 
 def ver_campo(request, formulario=None, accion_id=None):
     acciones = Accion.objects.filter(responsable=request.user).select_related(
-        "ticket__cliente_ficha", "ticket__equipo_ficha",
+        "ticket__cliente_ficha", "ticket__equipo_ficha", "depende_de",
     ).prefetch_related(
         Prefetch("visitas_agendadas", queryset=visitas_de_campo(request.user), to_attr="mis_visitas"),
     ).order_by(
@@ -84,7 +85,7 @@ def tickets(request):
             filtro |= Q(pk=int(numero))
         tickets = tickets.filter(filtro)
     responsable = ResponsableField(
-        queryset=get_user_model().objects.filter(is_active=True).order_by("first_name"),
+        queryset=responsables_disponibles(),
         required=False, label="Pendientes por responsable",
     )
     filtro_form = forms.Form(request.GET)
@@ -127,7 +128,7 @@ def vincular_ticket(request, pk):
         elif registro.cliente_ficha_id != cliente_anterior and (
             registro.solicitudes_cotizacion.exists() or registro.cotizaciones.exists()
             or registro.pedidos_servicio.exists() or registro.solicitudes_facturacion.exists()
-            or registro.llamadas_sap.exists()
+            or registro.llamadas_sap.exists() or registro.documentos.exists()
         ):
             form.add_error("cliente_ficha", "El ticket tiene registros asociados. Conservá su cliente.")
         else:
@@ -137,30 +138,33 @@ def vincular_ticket(request, pk):
 
 
 def ver_ticket(request, registro, form, estado_form=None, accion_id=None):
-    acciones = registro.acciones.select_related("responsable", "asignada_por", "realizada_por").prefetch_related(
+    acciones = registro.acciones.select_related("responsable", "asignada_por", "realizada_por", "depende_de").prefetch_related(
         Prefetch("cambios", queryset=CambioAccion.objects.select_related("autor")),
         "resultados_visita__visita",
     ).order_by("pk")
+    pedidos = PedidoServicio.objects.filter(Q(ticket=registro) | Q(cotizaciones__ticket=registro)).distinct()
+    visitas = Visita.objects.filter(Q(trabajos__ticket=registro) | Q(pedidos__in=pedidos)).distinct()
     return render(request, "servicios/ticket.html", {
         "ticket": registro, "acciones": acciones, "form": form,
         "solicitudes_cotizacion": solicitudes_visibles(request.user).filter(ticket=registro),
         "cotizaciones": registro.cotizaciones.all(),
         "solicitudes_facturacion": solicitudes_facturacion_visibles(request.user).filter(ticket=registro),
-        "pedidos": PedidoServicio.objects.filter(Q(ticket=registro) | Q(cotizaciones__ticket=registro)).distinct(),
+        "pedidos": pedidos, "visitas": visitas,
         "estado_form": estado_form or EstadoForm(auto_id=False), "accion_id": accion_id,
     })
 
 
 @oficina_requerida
 def ticket(request, pk):
-    return ver_ticket(request, get_object_or_404(Ticket, pk=pk), AccionForm())
+    registro = get_object_or_404(Ticket, pk=pk)
+    return ver_ticket(request, registro, AccionForm(ticket=registro))
 
 
 @oficina_requerida
 @require_POST
 def agregar(request, pk):
     registro = get_object_or_404(Ticket, pk=pk)
-    form = AccionForm(request.POST)
+    form = AccionForm(request.POST, ticket=registro)
     if form.is_valid():
         accion = form.save(commit=False)
         accion.ticket = registro
@@ -182,6 +186,8 @@ def volver_a_accion(request, accion):
 def realizar(request, pk):
     propias = Accion.objects.filter(responsable=request.user)
     accion = get_object_or_404(propias.select_for_update(), pk=pk)
+    if not accion.realizada_el and accion.bloqueada_por_previa:
+        return respuesta_accion_bloqueada()
     if not accion.realizada_el and Rol.CAMPO in roles(request.user):
         if accion.visitas_agendadas.filter(tecnicos=request.user).exists():
             return redirect("servicios_tecnicos")
@@ -199,9 +205,12 @@ def cambiar_estado(request, pk):
     propias = Accion.objects.filter(responsable=request.user)
     accion = get_object_or_404(propias, pk=pk)
     form = EstadoForm(request.POST, auto_id=False)
-    if not form.is_valid():
+    form.is_valid()
+    if form.cleaned_data.get("estado") == Accion.Estado.EN_CURSO and accion.bloqueada_por_previa:
+        form.add_error("estado", "Completá primero la acción previa de este trabajo.")
+    if form.errors:
         if es_oficina(request.user):
-            return ver_ticket(request, accion.ticket, AccionForm(), form, accion.pk)
+            return ver_ticket(request, accion.ticket, AccionForm(ticket=accion.ticket), form, accion.pk)
         return ver_campo(request, form, accion.pk)
     estado = form.cleaned_data["estado"]
     motivo = form.cleaned_data["motivo"] if estado == Accion.Estado.EN_ESPERA else ""

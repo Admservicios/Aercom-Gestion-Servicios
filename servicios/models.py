@@ -208,6 +208,7 @@ class Ticket(models.Model):
     equipo_ficha = models.ForeignKey(
         Equipo, on_delete=models.PROTECT, related_name="tickets", null=True, blank=True,
     )
+    documentos = models.ManyToManyField(DocumentoCliente, related_name="tickets", blank=True)
     detalle = models.TextField(blank=True)
     creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     creado_el = models.DateTimeField(auto_now_add=True)
@@ -258,6 +259,11 @@ class Accion(models.Model):
     facturacion = models.CharField(max_length=16, choices=Facturacion, default=Facturacion.A_DEFINIR)
     estado = models.CharField(max_length=16, choices=Estado, default=Estado.ASIGNADA)
     motivo_espera = models.CharField(max_length=240, blank=True)
+    proximo_paso = models.CharField("Próximo paso", max_length=240, blank=True)
+    depende_de = models.ForeignKey(
+        "self", on_delete=models.RESTRICT, null=True, blank=True, related_name="acciones_siguientes",
+        verbose_name="Acción previa",
+    )
     asignada_por = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
         null=True, blank=True, related_name="acciones_asignadas",
@@ -274,6 +280,22 @@ class Accion(models.Model):
         null=True, blank=True, related_name="acciones_realizadas",
     )
 
+    def clean(self):
+        if self.depende_de_id and self.depende_de.ticket_id != self.ticket_id:
+            raise ValidationError({"depende_de": "La acción previa debe pertenecer al mismo ticket."})
+
+    @property
+    def bloqueada_por_previa(self):
+        return self.depende_de_id is not None and self.depende_de.realizada_el is None
+
+    @property
+    def siguiente_paso(self):
+        if self.realizada_el:
+            return "Acción realizada"
+        if self.bloqueada_por_previa:
+            return f"Esperar que se complete «{self.depende_de.titulo}»"
+        return self.proximo_paso or self.motivo_espera or "Por definir"
+
 
 class CambioAccion(models.Model):
     accion = models.ForeignKey(Accion, on_delete=models.CASCADE, related_name="cambios")
@@ -281,6 +303,7 @@ class CambioAccion(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
     estado = models.CharField(max_length=16, choices=Accion.Estado)
     motivo = models.CharField(max_length=240, blank=True)
+    proximo_paso = models.CharField(max_length=240, blank=True, null=True)
 
     class Meta:
         ordering = ("pk",)

@@ -44,7 +44,7 @@ def detalle(request, pk):
     oficina = es_oficina(request.user)
     visitas = Visita.objects.all() if oficina else visitas_de_campo(request.user)
     visita = get_object_or_404(visitas.select_related("cliente", "planta").prefetch_related("tecnicos"), pk=pk)
-    trabajos = visita.trabajos.select_related("responsable", "ticket__equipo_ficha").order_by("pk")
+    trabajos = visita.trabajos.select_related("responsable", "ticket__equipo_ficha", "depende_de").order_by("pk")
     resultados = visita.resultados.select_related("autor", "responsable")
     if not oficina:
         trabajos = trabajos.filter(responsable=request.user)
@@ -73,7 +73,9 @@ def registrar_resultado(request, visita_id, pk):
 
     registro = ResultadoTrabajoVisita(visita=visita, trabajo=trabajo, responsable=trabajo.responsable, autor=request.user)
     form = ResultadoForm(request.POST if request.method == "POST" else None, instance=registro)
-    if form.is_valid():
+    if form.is_valid() and form.cleaned_data["estado"] in (Estado.REALIZADO, Estado.PARCIAL) and trabajo.bloqueada_por_previa:
+        form.add_error("estado", "Completá primero la acción previa de este trabajo.")
+    if form.is_bound and not form.errors:
         resultado = form.save()
         if resultado.estado == Estado.REALIZADO:
             trabajo.estado = Accion.Estado.REALIZADA

@@ -59,6 +59,22 @@
   {% include "servicios/llamadas_sap_vinculadas.html" with llamadas=ticket.llamadas_sap.all %}
 </article>
 {% endif %}
+<article>
+  <h2>Visitas vinculadas</h2>
+  <ul>{% for visita in visitas %}
+    <li><a href="{% url 'visita' visita.pk %}">V-{{ visita.pk }} · {{ visita.fecha|date:"d/m/Y" }} a las {{ visita.hora_desde|time:"H:i" }}</a></li>
+  {% empty %}<li>Sin visitas vinculadas.</li>{% endfor %}</ul>
+</article>
+{% if ticket.cliente_ficha_id %}
+<article>
+  <h2>Documentos vinculados</h2>
+  <p><a href="{% url 'documentos_ticket' ticket.pk %}">Vincular documentos del cliente</a></p>
+  <ul>{% for documento in ticket.documentos.all %}
+    <li>{{ documento.tipo }} · {% if documento.enlace %}<a href="{{ documento.enlace }}">{{ documento.referencia }}</a>{% else %}{{ documento.referencia }}{% endif %}
+    {% if documento.descripcion %} · {{ documento.descripcion }}{% endif %}</li>
+  {% empty %}<li>Sin documentos vinculados.</li>{% endfor %}</ul>
+</article>
+{% endif %}
 <h2>Acciones</h2>
 {% for accion in acciones %}
 <article id="accion-{{ accion.pk }}">
@@ -66,6 +82,8 @@
 {% if accion.realizada_el %}<strong class="estado hecha">Realizada</strong>{% else %}<strong class="estado pendiente">{{ accion.get_estado_display }}</strong>{% endif %}</div>
 {{ accion.detalle|linebreaks }}
 <p>Responsable: {{ accion.responsable.get_full_name|default:accion.responsable.username }}</p>
+{% if not accion.realizada_el %}<p>Próximo paso: {{ accion.siguiente_paso }}</p>{% endif %}
+{% if accion.depende_de_id %}<p>Acción previa: <a href="#accion-{{ accion.depende_de_id }}">{{ accion.depende_de.titulo }}</a></p>{% endif %}
 <p>{{ accion.get_tipo_display }} · Facturación: {{ accion.get_facturacion_display }}{% if accion.facturacion == "abono" %} (sin cargo adicional){% endif %}</p>
 {% if accion.motivo_espera %}<p>En espera de: {{ accion.motivo_espera }}</p>{% endif %}
 {% for resultado in accion.resultados_visita.all %}
@@ -74,11 +92,16 @@
 <h4>Historial</h4>
 <p>Asignada desde {{ accion.asignada_el|date:"d/m/Y H:i" }}{% if accion.asignada_por %} por {{ accion.asignada_por.get_full_name|default:accion.asignada_por.username }}{% endif %}</p>
 {% for cambio in accion.cambios.all %}
+{% if cambio.proximo_paso is not None %}
+<p>Próximo paso actualizado a «{{ cambio.proximo_paso|default:"Por definir" }}» por {{ cambio.autor.get_full_name|default:cambio.autor.username }} · {{ cambio.fecha|date:"d/m/Y H:i" }}</p>
+{% else %}
 <p>{{ cambio.get_estado_display }} por {{ cambio.autor.get_full_name|default:cambio.autor.username }} · {{ cambio.fecha|date:"d/m/Y H:i" }}{% if cambio.motivo %} · {{ cambio.motivo }}{% endif %}</p>
+{% endif %}
 {% endfor %}
 {% if accion.realizada_el %}
 <p>Realizada por {{ accion.realizada_por.get_full_name|default:accion.realizada_por.username }} · {{ accion.realizada_el|date:"d/m/Y H:i" }}</p>
 {% elif accion.responsable == user %}
+<p><a href="{% url 'proximo_paso_accion' accion.pk %}">Editar próximo paso</a></p>
 {% include "servicios/actualizar_accion.html" %}
 {% endif %}
 </article>
