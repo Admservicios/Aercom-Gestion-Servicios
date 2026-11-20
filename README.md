@@ -8,7 +8,7 @@ Piloto privado con datos ficticios. GitHub Codespaces prepara Django y PostgreSQ
 4. Entrá como `oficina.demo`. En **Menú de Oficina**, abrí **Tickets → Nuevo ticket**, cargá un generador ficticio y agregá dos acciones. Asigná «Lavado incluido en el abono» a Bruno Demo con facturación «Incluida en el abono». Asigná «Revisar vibración» a Inés Demo.
 5. Salí, entrá como `campo.demo` y completá el lavado en **Mis tareas**. Volvé a entrar como oficina, buscá el generador y comprobá que el ticket sigue abierto, el lavado tiene autor y hora, y la revisión sigue asignada a Inés.
 
-También hay un ticket de ejemplo. La modalidad de abono se muestra en cada acción y esta entrega no emite facturas. Las fichas de análisis técnico, las visitas programadas, la facturación y el cierre administrativo quedan para las próximas etapas.
+Hay un ticket de ejemplo para el recorrido inicial. Para revisar el circuito completo de Oficina, Coordinación, Campo y Administración con tu equipo, consultá la [prueba funcional de 10 minutos del paso 8.2B](docs/8.2B-prueba-funcional.md). Usa un escenario ficticio reutilizable.
 
 Para actualizar un Codespace que ya está funcionando en la rama `desarrollo/piloto-demo`, pegá en su terminal:
 

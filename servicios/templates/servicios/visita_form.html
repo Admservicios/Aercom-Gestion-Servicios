@@ -1,6 +1,7 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
 <p>{% if visita %}<a href="{% url 'visita' visita.pk %}">Volver a la visita</a>
+{% elif pedido %}<a href="{% url 'pedido_servicio' pedido.pk %}">Volver al pedido</a>
 {% else %}<a href="{% url 'cliente' cliente.pk %}">Volver a {{ cliente.nombre }}</a>{% endif %}</p>
 <h1>{{ titulo }}</h1>
 <p>{{ cliente.nombre }} · Cargá los datos tal como figuran en la Agenda General.</p>

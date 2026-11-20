@@ -173,7 +173,8 @@ def nueva(request, cliente_id=None, pedido_id=None):
             asociar_proximas_visitas(cliente.pk)
             return redirect("visita", pk=visita.pk)
     return render(request, "servicios/visita_form.html", {
-        "form": form, "cliente": cliente, "titulo": "Registrar visita de Excel", "texto_boton": "Guardar visita",
+        "form": form, "cliente": cliente, "pedido": pedido,
+        "titulo": "Registrar visita de Excel", "texto_boton": "Guardar visita",
     })
 
 
