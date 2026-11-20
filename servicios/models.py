@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.db import models
 
 
@@ -34,6 +35,42 @@ class Planta(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.codigo}) · {self.cliente}"
+
+
+class ContactoCliente(models.Model):
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="contactos")
+    planta = models.ForeignKey(
+        Planta, on_delete=models.PROTECT, related_name="contactos", null=True, blank=True,
+    )
+    nombre = models.CharField(max_length=120)
+    cargo = models.CharField(max_length=100, blank=True)
+    correo = models.EmailField(blank=True)
+    telefono = models.CharField("Teléfono", max_length=40, blank=True)
+
+    class Meta:
+        ordering = ("nombre", "pk")
+
+    def clean(self):
+        if self.planta_id and self.planta.cliente_id != self.cliente_id:
+            raise ValidationError({"planta": "La planta debe pertenecer al cliente del contacto."})
+
+
+class DocumentoCliente(models.Model):
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="documentos")
+    tipo = models.CharField("Tipo de documento", max_length=80)
+    referencia = models.CharField(max_length=100)
+    descripcion = models.CharField("Descripción", max_length=240, blank=True)
+    enlace = models.URLField(
+        blank=True, validators=[URLValidator(schemes=["https", "http"])],
+    )
+
+    class Meta:
+        ordering = ("tipo", "referencia")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("cliente", "tipo", "referencia"), name="documento_tipo_referencia_por_cliente",
+            ),
+        ]
 
 
 class Equipo(models.Model):

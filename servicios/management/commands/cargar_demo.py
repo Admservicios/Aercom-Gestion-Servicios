@@ -8,7 +8,7 @@ from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from servicios.models import Accion, Cliente, Equipo, Planta, Ticket
+from servicios.models import Accion, Cliente, ContactoCliente, DocumentoCliente, Equipo, Planta, Ticket
 from servicios.permisos import ROLES_SERVICIOS, Rol
 
 
@@ -83,6 +83,14 @@ class Command(BaseCommand):
         )
         Equipo.objects.get_or_create(
             cliente=tercero, codigo="DEMO-GE-02", defaults={"nombre": "Generador GE-02"},
+        )
+        ContactoCliente.objects.get_or_create(
+            cliente=abonado, nombre="Elena Ejemplo",
+            defaults={"planta": planta, "cargo": "Contacto de mantenimiento", "correo": "elena@example.com"},
+        )
+        DocumentoCliente.objects.get_or_create(
+            cliente=abonado, tipo="Llamada SAP", referencia="DEMO-NS-001",
+            defaults={"descripcion": "Referencia ficticia de mantenimiento"},
         )
         if {"oficina.demo", "campo.demo"} <= nuevas:
             ticket = Ticket.objects.create(

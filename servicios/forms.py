@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import Cliente, Equipo, Planta, Ticket
+from .models import Cliente, ContactoCliente, DocumentoCliente, Equipo, Planta, Ticket
 
 
 class VinculoTicketForm(forms.ModelForm):
@@ -48,3 +48,29 @@ class EquipoForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["planta"].queryset = Planta.objects.select_related("cliente")
+
+
+class ContactoClienteForm(forms.ModelForm):
+    class Meta:
+        model = ContactoCliente
+        fields = ("nombre", "cargo", "planta", "correo", "telefono")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["planta"].queryset = self.instance.cliente.plantas.all()
+
+
+class DocumentoClienteForm(forms.ModelForm):
+    class Meta:
+        model = DocumentoCliente
+        fields = ("tipo", "referencia", "descripcion", "enlace")
+        help_texts = {"enlace": "Opcional. Usá una dirección HTTP o HTTPS."}
+
+    def clean(self):
+        datos = super().clean()
+        tipo, referencia = datos.get("tipo"), datos.get("referencia")
+        if tipo and referencia:
+            existentes = self.instance.cliente.documentos.filter(tipo=tipo, referencia=referencia)
+            if existentes.exclude(pk=self.instance.pk).exists():
+                self.add_error("referencia", "Ya existe un documento de ese tipo con esta referencia.")
+        return datos

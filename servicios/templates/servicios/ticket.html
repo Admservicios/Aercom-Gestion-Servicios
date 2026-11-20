@@ -19,7 +19,7 @@
 <p>Creado por {{ ticket.creado_por }} · {{ ticket.creado_el|date:"d/m/Y H:i" }}</p>
 <h2>Acciones</h2>
 {% for accion in acciones %}
-<article>
+<article id="accion-{{ accion.pk }}">
 <div class="cabecera"><h3>{{ accion.titulo }}</h3>
 {% if accion.realizada_el %}<strong class="estado hecha">Realizada</strong>{% else %}<strong class="estado pendiente">{{ accion.get_estado_display }}</strong>{% endif %}</div>
 {{ accion.detalle|linebreaks }}

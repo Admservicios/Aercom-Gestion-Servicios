@@ -3,6 +3,7 @@ from secrets import token_urlsafe
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import Accion, AlertaCampo, Cliente, Equipo, Planta, Ticket
 from .permisos import ROLES_OFICINA, Rol
@@ -199,6 +200,67 @@ class CatalogoTest(TestCase):
         self.assertEqual(self.client.get(reverse("equipo", args=[self.equipo.pk])).status_code, 403)
         self.assertEqual(self.client.get(reverse("cliente", args=[self.abonado.pk])).status_code, 403)
         self.assertEqual(self.client.get(reverse("abonados")).status_code, 403)
+
+
+    def test_contacto_por_planta_y_edicion_acotada_al_cliente(self):
+        alta = reverse("nuevo_contacto", args=[self.abonado.pk])
+        datos = {"nombre": "Elena Ejemplo", "correo": "elena@example.com", "planta": self.planta.pk}
+        respuesta = self.client.post(alta, datos)
+        self.assertRedirects(respuesta, reverse("cliente", args=[self.abonado.pk]))
+        contacto = self.abonado.contactos.get()
+        self.assertEqual(contacto.planta, self.planta)
+
+        ajena = Planta.objects.create(cliente=self.tercero, codigo="OTRA", nombre="Otra planta ficticia")
+        edicion = reverse("editar_contacto", args=[self.abonado.pk, contacto.pk])
+        respuesta = self.client.post(edicion, {**datos, "planta": ajena.pk})
+        self.assertTrue(respuesta.context["form"].has_error("planta", "invalid_choice"))
+        self.assertEqual(
+            self.client.get(reverse("editar_contacto", args=[self.tercero.pk, contacto.pk])).status_code, 404,
+        )
+        respuesta = self.client.post(edicion, {**datos, "telefono": "555-0101"})
+        self.assertEqual(respuesta.status_code, 302)
+        ficha = self.client.get(reverse("cliente", args=[self.abonado.pk]))
+        self.assertContains(ficha, "elena@example.com")
+        self.assertContains(ficha, "555-0101")
+
+    def test_documentos_por_cliente_y_permisos_de_lectura(self):
+        alta = reverse("nuevo_documento", args=[self.abonado.pk])
+        datos = {"tipo": "Llamada SAP", "referencia": "NS-123", "enlace": "https://example.com/ns-123"}
+        respuesta = self.client.post(alta, datos)
+        self.assertRedirects(respuesta, reverse("cliente", args=[self.abonado.pk]))
+        self.assertContains(self.client.post(alta, datos), "Ya existe un documento")
+        respuesta = self.client.post(alta, {**datos, "referencia": "NS-124", "enlace": "ftp://example.com/archivo"})
+        self.assertTrue(respuesta.context["form"].has_error("enlace", "invalid"))
+        self.assertEqual(self.abonado.documentos.count(), 1)
+        comercial = User.objects.create_user("comercial.ficha")
+        comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(comercial)
+        self.assertContains(self.client.get(reverse("cliente", args=[self.abonado.pk])), datos["enlace"])
+        self.assertNotContains(self.client.get(reverse("cliente", args=[self.tercero.pk])), "NS-123")
+        self.assertEqual(self.client.post(alta, datos).status_code, 403)
+        self.assertEqual(self.client.get(reverse("nuevo_contacto", args=[self.abonado.pk])).status_code, 403)
+
+    def test_ficha_muestra_pendientes_y_completados_de_sus_tickets(self):
+        ticket = Ticket.objects.create(asunto="Servicio local", cliente_ficha=self.abonado, creado_por=self.oficina)
+        pendiente = ticket.acciones.create(
+            titulo="Pendiente de revisión", responsable=self.campo, estado=Accion.Estado.EN_ESPERA,
+            motivo_espera="Respuesta de Compras",
+        )
+        ticket.acciones.create(
+            titulo="Lavado realizado", responsable=self.campo, estado=Accion.Estado.REALIZADA,
+            realizada_el=timezone.now(), realizada_por=self.campo,
+        )
+        ajeno = Ticket.objects.create(asunto="Otro servicio", cliente_ficha=self.tercero, creado_por=self.oficina)
+        ajeno.acciones.create(titulo="Trabajo de otro cliente", responsable=self.campo)
+
+        ficha = self.client.get(reverse("cliente", args=[self.abonado.pk]))
+        self.assertContains(ficha, "Pendientes: 1")
+        self.assertContains(ficha, "Respuesta de Compras")
+        self.assertContains(ficha, "Lavado realizado")
+        self.assertNotContains(ficha, "Trabajo de otro cliente")
+        detalle = reverse("ticket", args=[ticket.pk])
+        self.assertContains(ficha, f"{detalle}#accion-{pendiente.pk}")
+        self.assertContains(self.client.get(detalle), f'id="accion-{pendiente.pk}"')
 
 
 class PermisosPorRolTest(TestCase):

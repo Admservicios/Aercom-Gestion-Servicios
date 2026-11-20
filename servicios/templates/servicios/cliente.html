@@ -22,5 +22,52 @@
     {% empty %}<li>Sin equipos registrados.</li>{% endfor %}
   </ul>
 </article>
+<article>
+  <h2>Contactos</h2>
+  {% if puede_editar_catalogo %}<p><a href="{% url 'nuevo_contacto' cliente.pk %}">Nuevo contacto</a></p>{% endif %}
+  <ul>
+    {% for contacto in contactos %}
+    <li>
+      <strong>{{ contacto.nombre }}</strong>{% if contacto.cargo %} · {{ contacto.cargo }}{% endif %}
+      {% if contacto.planta_id %} · <a href="{% url 'planta' contacto.planta_id %}">{{ contacto.planta.nombre }}</a>{% endif %}
+      {% if contacto.correo %} · {{ contacto.correo }}{% endif %}
+      {% if contacto.telefono %} · {{ contacto.telefono }}{% endif %}
+      {% if puede_editar_catalogo %} · <a href="{% url 'editar_contacto' cliente.pk contacto.pk %}">Editar contacto</a>{% endif %}
+    </li>
+    {% empty %}<li>Sin contactos registrados.</li>{% endfor %}
+  </ul>
+</article>
+<article>
+  <h2>Documentos</h2>
+  {% if puede_editar_catalogo %}<p><a href="{% url 'nuevo_documento' cliente.pk %}">Registrar documento</a></p>{% endif %}
+  <ul>
+    {% for documento in documentos %}
+    <li>
+      {{ documento.tipo }} ·
+      {% if documento.enlace %}<a href="{{ documento.enlace }}">{{ documento.referencia }}</a>
+      {% else %}{{ documento.referencia }}{% endif %}
+      {% if documento.descripcion %} · {{ documento.descripcion }}{% endif %}
+    </li>
+    {% empty %}<li>Sin referencias documentales registradas.</li>{% endfor %}
+  </ul>
+</article>
+<article>
+  <h2>Trabajos y pendientes</h2>
+  <p>Pendientes: {{ pendientes }}</p>
+  <ul>
+    {% for accion in pagina %}
+    <li>
+      <a href="{% url 'ticket' accion.ticket_id %}#accion-{{ accion.pk }}">T-{{ accion.ticket_id }} · {{ accion.titulo }}</a>
+      · {{ accion.get_estado_display }}
+      · {{ accion.responsable.get_full_name|default:accion.responsable.username }}
+      <br>
+      Asignada el {{ accion.asignada_el|date:"d/m/Y H:i" }}
+      {% if accion.realizada_el %} · Realizada el {{ accion.realizada_el|date:"d/m/Y H:i" }}{% endif %}
+      {% if accion.motivo_espera %} · En espera de: {{ accion.motivo_espera }}{% endif %}
+    </li>
+    {% empty %}<li>Sin acciones registradas en los tickets del cliente.</li>{% endfor %}
+  </ul>
+  {% include "servicios/paginacion.html" %}
+</article>
 {% include "servicios/tickets_vinculados.html" %}
 {% endblock %}
