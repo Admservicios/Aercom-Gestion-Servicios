@@ -45,6 +45,13 @@
   {% endif %}
   {% include "servicios/pedidos_vinculados.html" %}
 </article>
+{% if ticket.cliente_ficha_id %}
+<article>
+  <h2>Facturación de trabajos</h2>
+  <p><a href="{% url 'facturar_ticket' ticket.pk %}">Solicitar facturación de trabajo</a></p>
+  {% include "servicios/facturacion_trabajos_vinculados.html" %}
+</article>
+{% endif %}
 <h2>Acciones</h2>
 {% for accion in acciones %}
 <article id="accion-{{ accion.pk }}">

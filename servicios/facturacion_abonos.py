@@ -10,10 +10,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from .models import Cliente, ContratoAbono, FacturacionMensualAbono
-from .permisos import ROLES_FACTURACION_ABONOS, requiere_roles
+from .permisos import ROLES_FACTURACION, requiere_roles
 
 
-facturacion_abonos_requerida = requiere_roles(ROLES_FACTURACION_ABONOS)
+facturacion_abonos_requerida = requiere_roles(ROLES_FACTURACION)
 Estado = FacturacionMensualAbono.Estado
 
 

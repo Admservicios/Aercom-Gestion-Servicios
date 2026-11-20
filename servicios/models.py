@@ -657,3 +657,104 @@ class FacturacionMensualAbono(models.Model):
             errores["fecha_factura"] = "La fecha de emisión no puede ser futura."
         if errores:
             raise ValidationError(errores)
+
+
+class SolicitudFacturacionTrabajo(models.Model):
+    class Modalidad(models.TextChoices):
+        PREVIA = "previa", "Antes de la ejecución"
+        POSTERIOR = "posterior", "Después de la ejecución"
+        ABONO = "abono", "Incluida en el abono"
+
+    class Estado(models.TextChoices):
+        SOLICITADA = "solicitada", "Solicitada"
+        EN_ESPERA = "en_espera", "Documentación pendiente"
+        FACTURADA = "facturada", "Facturada"
+        CUBIERTA = "cubierta", "Cubierta por el abono"
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="solicitudes_facturacion")
+    pedido = models.ForeignKey(
+        PedidoServicio, on_delete=models.PROTECT, blank=True, null=True, related_name="solicitudes_facturacion",
+    )
+    cotizacion = models.ForeignKey(
+        Cotizacion, on_delete=models.PROTECT, blank=True, null=True, related_name="solicitudes_facturacion",
+    )
+    trabajos = models.ManyToManyField(Accion, related_name="solicitudes_facturacion", blank=True)
+    solicitante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    creada_el = models.DateTimeField(auto_now_add=True)
+    modalidad = models.CharField(max_length=10, choices=Modalidad)
+    estado = models.CharField(max_length=12, choices=Estado, default=Estado.SOLICITADA)
+    referencia_presupuesto = models.CharField("Referencia de presupuesto", max_length=120, blank=True)
+    orden_compra = models.CharField("Referencia de OC", max_length=120, blank=True)
+    correo_envio = models.EmailField("Correo de envío", blank=True)
+    centro_costo = models.CharField("Centro de costo", max_length=100, blank=True)
+    moneda = models.CharField(
+        max_length=3, blank=True, validators=[RegexValidator(r"^[A-Z]{3}\Z", "Ingresá un código como ARS o USD.")],
+    )
+    referencia_cambio = models.CharField("Cambio o referencia cambiaria", max_length=120, blank=True)
+    tipo_comprobante = models.CharField(max_length=100, blank=True)
+    hes = models.CharField("Referencia HES", max_length=120, blank=True)
+    portal = models.CharField(max_length=200, blank=True)
+    documentacion_faltante = models.TextField("Documentación faltante", blank=True)
+    observaciones = models.TextField(blank=True)
+    factura_sap = models.CharField("Referencia de factura en SAP", max_length=120, blank=True)
+    fecha_factura = models.DateField("Fecha de emisión en SAP", blank=True, null=True)
+    cobranza_aplica = models.BooleanField("Corresponde seguir la cobranza", default=False)
+    referencia_cobro = models.CharField("Referencia de cobro", max_length=120, blank=True)
+    fecha_cobro = models.DateField(blank=True, null=True)
+
+    class Meta:
+        ordering = ("-pk",)
+
+    @property
+    def estado_cobranza(self):
+        if not self.cobranza_aplica:
+            return "No aplica"
+        return "Cobrada" if self.fecha_cobro else "Pendiente de cobro"
+
+    def actualizar_estado(self):
+        if self.modalidad == self.Modalidad.ABONO:
+            self.estado = self.Estado.CUBIERTA
+        elif self.factura_sap:
+            self.estado = self.Estado.FACTURADA
+        elif self.documentacion_faltante:
+            self.estado = self.Estado.EN_ESPERA
+        else:
+            self.estado = self.Estado.SOLICITADA
+
+    def clean(self):
+        errores = {}
+        if self.modalidad == self.Modalidad.ABONO and self.ticket_id:
+            if self.ticket.cliente_ficha.tipo != Cliente.Tipo.ABONADO:
+                errores["modalidad"] = "La cobertura del abono solo corresponde a clientes abonados."
+            if self.factura_sap or self.fecha_factura:
+                errores["factura_sap"] = "Un trabajo cubierto por el abono no lleva una factura puntual."
+            if self.cobranza_aplica:
+                errores["cobranza_aplica"] = "Un trabajo cubierto por el abono no tiene cobranza puntual."
+        if self.factura_sap and not self.fecha_factura:
+            errores["fecha_factura"] = "Ingresá la fecha de emisión en SAP."
+        if self.fecha_factura and not self.factura_sap:
+            errores["factura_sap"] = "Ingresá la referencia del comprobante en SAP."
+        if self.fecha_factura and self.fecha_factura > timezone.localdate():
+            errores["fecha_factura"] = "La fecha de emisión no puede ser futura."
+        if self.fecha_cobro or self.referencia_cobro:
+            if not self.cobranza_aplica:
+                errores["cobranza_aplica"] = "Indicá que corresponde seguir la cobranza."
+            if not self.fecha_cobro:
+                errores["fecha_cobro"] = "Ingresá la fecha de cobro."
+            elif self.fecha_cobro > timezone.localdate():
+                errores["fecha_cobro"] = "La fecha de cobro no puede ser futura."
+            if not self.referencia_cobro:
+                errores["referencia_cobro"] = "Ingresá la referencia del cobro."
+        if errores:
+            raise ValidationError(errores)
+
+
+class MovimientoFacturacionTrabajo(models.Model):
+    solicitud = models.ForeignKey(SolicitudFacturacionTrabajo, on_delete=models.CASCADE, related_name="movimientos")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    estado = models.CharField(max_length=12, choices=SolicitudFacturacionTrabajo.Estado)
+    nota = models.TextField(blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)

@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from .facturacion_trabajos import solicitudes_facturacion_visibles
 from .models import Cliente, ContratoAbono, Cotizacion, PedidoServicio, Ticket
 from .permisos import ROLES_REVISION_COTIZACION, Rol, oficina_requerida, requiere_roles, roles
 
@@ -131,6 +132,7 @@ def mostrar_pedido(request, pedido, form=None, error=None):
     pasos = transiciones(request.user, pedido)
     return render(request, "servicios/pedido_detalle.html", {
         "pedido": pedido, "form": (form or SeguimientoPedidoForm(pasos)) if pasos else None, "error": error,
+        "solicitudes_facturacion": solicitudes_facturacion_visibles(request.user).filter(pedido=pedido),
         "admite_visita": pedido.tipo == Tipo.SERVICIO and pedido.estado in (
             Estado.ENVIADO, Estado.PENDIENTE_AGENDAR, Estado.AGENDADO,
         ),

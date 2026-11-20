@@ -47,6 +47,11 @@
 </article>
 {% endif %}
 <article>
+  <h2>Facturación de trabajos</h2>
+  <p><a href="{% url 'facturar_pedido' pedido.pk %}">Solicitar facturación de trabajo</a></p>
+  {% include "servicios/facturacion_trabajos_vinculados.html" %}
+</article>
+<article>
   <h2>Historial del pedido</h2>
   <ul>{% for cambio in pedido.cambios.all %}
     <li>{{ cambio.get_estado_display }} · {{ cambio.autor.get_full_name|default:cambio.autor.username }} · {{ cambio.fecha|date:"d/m/Y H:i" }}

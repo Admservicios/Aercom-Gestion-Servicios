@@ -1,6 +1,6 @@
 from django.contrib.auth import views as auth
 from django.urls import path
-from . import abonos, agenda, alertas, campo_servicios, catalogo, cotizaciones, facturacion_abonos, mantenimiento, pedidos, precios, solicitudes, views
+from . import abonos, agenda, alertas, campo_servicios, catalogo, cotizaciones, facturacion_abonos, facturacion_trabajos, mantenimiento, pedidos, precios, solicitudes, views
 
 urlpatterns = [
     path("", views.inicio, name="inicio"),
@@ -44,6 +44,11 @@ urlpatterns = [
     path("solicitudes-precios/<int:anterior_id>/actualizar/", precios.nueva, name="actualizar_solicitud_precio"),
     path("cotizaciones/<int:cotizacion_id>/precios/nueva/", precios.nueva, name="precio_cotizacion"),
     path("repuestos/<int:repuesto_id>/precios/nueva/", precios.nueva, name="precio_repuesto"),
+    path("facturacion-trabajos/", facturacion_trabajos.lista, name="facturacion_trabajos"),
+    path("facturacion-trabajos/<int:pk>/", facturacion_trabajos.detalle, name="facturacion_trabajo"),
+    path("facturacion-trabajos/<int:pk>/actualizar/", facturacion_trabajos.gestionar, name="actualizar_facturacion_trabajo"),
+    path("tickets/<int:ticket_id>/facturacion/nueva/", facturacion_trabajos.nueva, name="facturar_ticket"),
+    path("pedidos/<int:pedido_id>/facturacion/nueva/", facturacion_trabajos.nueva, name="facturar_pedido"),
     path("facturacion-abonos/", facturacion_abonos.lista, name="facturacion_abonos"),
     path("facturacion-abonos/<str:mes>/clientes/<int:cliente_id>/", facturacion_abonos.gestionar, name="facturacion_abono_mes"),
     path("agenda/", agenda.lista, name="agenda"),

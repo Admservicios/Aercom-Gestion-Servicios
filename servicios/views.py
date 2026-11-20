@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .campo_servicios import visitas_de_campo
+from .facturacion_trabajos import solicitudes_facturacion_visibles
 from .forms import TicketForm, VinculoTicketForm
 from .models import Accion, CambioAccion, PedidoServicio, Ticket
 from .permisos import ROLES_SERVICIOS, Rol, es_oficina, oficina_requerida, roles, servicios_requeridos
@@ -124,7 +125,8 @@ def vincular_ticket(request, pk):
         ):
             form.add_error("planta_ficha", "El ticket está vinculado a una visita. Conservá su cliente y planta.")
         elif registro.cliente_ficha_id != cliente_anterior and (
-            registro.solicitudes_cotizacion.exists() or registro.cotizaciones.exists() or registro.pedidos_servicio.exists()
+            registro.solicitudes_cotizacion.exists() or registro.cotizaciones.exists()
+            or registro.pedidos_servicio.exists() or registro.solicitudes_facturacion.exists()
         ):
             form.add_error("cliente_ficha", "El ticket tiene solicitudes, cotizaciones o pedidos asociados. Conservá su cliente.")
         else:
@@ -142,6 +144,7 @@ def ver_ticket(request, registro, form, estado_form=None, accion_id=None):
         "ticket": registro, "acciones": acciones, "form": form,
         "solicitudes_cotizacion": solicitudes_visibles(request.user).filter(ticket=registro),
         "cotizaciones": registro.cotizaciones.all(),
+        "solicitudes_facturacion": solicitudes_facturacion_visibles(request.user).filter(ticket=registro),
         "pedidos": PedidoServicio.objects.filter(Q(ticket=registro) | Q(cotizaciones__ticket=registro)).distinct(),
         "estado_form": estado_form or EstadoForm(auto_id=False), "accion_id": accion_id,
     })

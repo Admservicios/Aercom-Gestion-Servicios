@@ -10,7 +10,7 @@ from django.utils import timezone
 from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Cotizacion, Equipo, Planta, RegistroMantenimiento, Ticket
 from .models import RespuestaPrecio, SolicitudCotizacion, SolicitudPrecio
 from .models import FacturacionMensualAbono, PedidoServicio, Visita
-from .models import ResultadoTrabajoVisita
+from .models import ResultadoTrabajoVisita, SolicitudFacturacionTrabajo
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -1067,3 +1067,96 @@ class FacturacionMensualAbonoTest(TestCase):
         self.client.force_login(comercial)
         self.assertEqual(self.client.get(self.alta).status_code, 403)
         self.assertNotContains(self.client.get(reverse("cliente", args=[self.cliente.pk])), "Facturación mensual del abono")
+
+
+class FacturacionTrabajoTest(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("administracion.trabajo")
+        self.admin.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.comercial = User.objects.create_user("comercial.trabajo")
+        self.comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.cliente = Cliente.objects.create(codigo="AB-62", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.ticket = Ticket.objects.create(asunto="Revisión ficticia", cliente_ficha=self.cliente, creado_por=self.comercial)
+        self.cotizacion = self.ticket.cotizaciones.create(
+            referencia="PRES-62", alcance="Revisión", estado=Cotizacion.Estado.APROBADA,
+            orden_compra="OC-62", moneda="ARS",
+        )
+        self.pedido = self.ticket.pedidos_servicio.create(alcance="Revisión")
+        self.pedido.cotizaciones.add(self.cotizacion)
+        self.datos = {
+            "modalidad": "previa", "cotizacion": self.cotizacion.pk, "orden_compra": "OC-62",
+            "correo_envio": "cliente@example.com", "centro_costo": "FICTICIO-62", "moneda": "ars",
+            "cobranza_aplica": "on", "documentacion_faltante": "Falta HES.",
+        }
+
+    def test_solicitud_previa_factura_y_cobranza_son_independientes(self):
+        accion = self.ticket.acciones.create(titulo="Trabajo por hacer", responsable=self.comercial)
+        self.client.force_login(self.comercial)
+        alta = reverse("facturar_pedido", args=[self.pedido.pk])
+        self.assertEqual(self.client.get(alta).context["form"]["orden_compra"].value(), "OC-62")
+        incluido = self.ticket.acciones.create(
+            titulo="Lavado incluido", responsable=self.comercial, facturacion=Accion.Facturacion.ABONO,
+        )
+        self.assertContains(self.client.post(alta, {**self.datos, "trabajos": [incluido.pk]}), "Separá los trabajos cubiertos")
+        respuesta = self.client.post(alta, {**self.datos, "trabajos": [accion.pk]})
+        solicitud = self.pedido.solicitudes_facturacion.get()
+        self.assertEqual(list(solicitud.trabajos.all()), [accion])
+        detalle = reverse("facturacion_trabajo", args=[solicitud.pk])
+        editar = reverse("actualizar_facturacion_trabajo", args=[solicitud.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertEqual(solicitud.estado, SolicitudFacturacionTrabajo.Estado.EN_ESPERA)
+        self.assertEqual(self.client.get(editar).status_code, 403)
+        self.assertContains(self.client.get(reverse("facturacion_trabajos")), "Falta HES.")
+
+        self.client.force_login(self.admin)
+        datos = {
+            **self.datos, "version": str(solicitud.movimientos.first().pk), "documentacion_faltante": "",
+            "factura_sap": "SAP-FICTICIA-62",
+        }
+        self.assertContains(self.client.post(editar, datos), "Ingresá la fecha de emisión en SAP.")
+        hoy = timezone.localdate().isoformat()
+        self.assertRedirects(self.client.post(editar, {**datos, "fecha_factura": hoy}), detalle)
+        self.assertEqual(self.client.post(editar, datos).status_code, 409)
+        solicitud.refresh_from_db()
+        self.assertEqual(solicitud.estado, SolicitudFacturacionTrabajo.Estado.FACTURADA)
+        self.assertEqual(solicitud.estado_cobranza, "Pendiente de cobro")
+        datos.update(
+            version=str(solicitud.movimientos.first().pk), fecha_factura=hoy,
+            referencia_cobro="REC-FICTICIO-62", fecha_cobro=hoy,
+        )
+        self.assertRedirects(self.client.post(editar, datos), detalle)
+        solicitud.refresh_from_db()
+        accion.refresh_from_db()
+        self.assertEqual(solicitud.estado_cobranza, "Cobrada")
+        self.assertIsNone(accion.realizada_el)
+        self.assertContains(self.client.get(detalle), "REC-FICTICIO-62")
+
+    def test_pedido_de_abono_conserva_cobertura_sin_factura_puntual(self):
+        contrato = self.cliente.contratos_abono.create(
+            referencia="AB-62", vigente_desde=date(2020, 1, 1), alcance="Revisión", frecuencia="Mensual",
+            valor=100, moneda="ARS", cobertura_general=True,
+        )
+        pedido = self.ticket.pedidos_servicio.create(contrato=contrato, alcance="Abono")
+        self.client.force_login(self.admin)
+        alta = reverse("facturar_pedido", args=[pedido.pk])
+        self.assertTrue(self.client.post(alta, {"modalidad": "posterior"}).context["form"].has_error("modalidad"))
+        self.client.post(alta, {"modalidad": "abono"})
+        solicitud = pedido.solicitudes_facturacion.get()
+        self.assertEqual(solicitud.estado, SolicitudFacturacionTrabajo.Estado.CUBIERTA)
+        editar = reverse("actualizar_facturacion_trabajo", args=[solicitud.pk])
+        self.assertNotIn("factura_sap", self.client.get(editar).context["form"].fields)
+
+    def test_solicitud_ajena_y_cotizacion_de_otro_ticket(self):
+        otro = User.objects.create_user("otro.trabajo")
+        self.comercial.groups.first().user_set.add(otro)
+        otro_ticket = Ticket.objects.create(asunto="Otro trabajo", cliente_ficha=self.cliente, creado_por=otro)
+        cotizacion = otro_ticket.cotizaciones.create(alcance="Otro", estado=Cotizacion.Estado.APROBADA)
+        self.client.force_login(self.comercial)
+        alta = reverse("facturar_ticket", args=[self.ticket.pk])
+        respuesta = self.client.post(alta, {**self.datos, "cotizacion": cotizacion.pk})
+        self.assertTrue(respuesta.context["form"].has_error("cotizacion", "invalid_choice"))
+        self.client.post(alta, {**self.datos, "modalidad": "posterior"})
+        solicitud = SolicitudFacturacionTrabajo.objects.get()
+        self.client.force_login(otro)
+        self.assertEqual(self.client.get(reverse("facturacion_trabajo", args=[solicitud.pk])).status_code, 404)
+        self.assertNotContains(self.client.get(reverse("facturacion_trabajos")), "Revisión ficticia")
