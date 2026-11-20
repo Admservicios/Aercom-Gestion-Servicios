@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Equipo, Planta, RegistroMantenimiento, Ticket
+from .models import SolicitudCotizacion
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -503,3 +504,86 @@ class MantenimientoEquipoTest(TestCase):
         ficha = self.client.get(self.ficha)
         self.assertContains(ficha, "SERIE-DEMO")
         self.assertContains(ficha, "Sala de máquinas")
+
+
+class SolicitudCotizacionTest(TestCase):
+    def setUp(self):
+        grupo = Group.objects.create(name=Rol.RESPONSABLE_TECNICO)
+        self.tecnica = User.objects.create_user("tecnica.solicitud")
+        self.otro = User.objects.create_user("otro.solicitud")
+        grupo.user_set.add(self.tecnica, self.otro)
+        self.revisora = User.objects.create_user("revisora.solicitud")
+        self.revisora.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.cliente = Cliente.objects.create(codigo="AB-99", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.ajeno = Cliente.objects.create(codigo="TE-99", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        self.equipo = self.cliente.equipos.create(codigo="G-99", nombre="Generador")
+        self.ticket = Ticket.objects.create(asunto="Revisión para cotizar", cliente_ficha=self.cliente, creado_por=self.tecnica)
+        self.alta = reverse("nueva_solicitud_cotizacion", args=[self.ticket.pk])
+        self.datos = {
+            "equipos": [self.equipo.pk], "memoria": "Revisar y reemplazar correas.", "cantidad_tecnicos": "2",
+            "horas_por_tecnico": "3.50", "duracion_estimada": "4.00", "referencia_origen": "NS-FICTICIA-99",
+            "repuestos-TOTAL_FORMS": "1", "repuestos-INITIAL_FORMS": "0",
+            "repuestos-0-descripcion": "Correa ficticia", "repuestos-0-cantidad": "2", "repuestos-0-por_equipo": "on",
+        }
+        self.client.force_login(self.tecnica)
+
+    def crear_solicitud(self):
+        respuesta = self.client.post(self.alta, self.datos)
+        solicitud = self.ticket.solicitudes_cotizacion.get()
+        detalle = reverse("solicitud_cotizacion", args=[solicitud.pk])
+        self.assertRedirects(respuesta, detalle)
+        return solicitud, detalle
+
+    def test_devolucion_correccion_y_lista_para_cotizar(self):
+        estado = SolicitudCotizacion.Estado
+        solicitud, detalle = self.crear_solicitud()
+        self.assertEqual(solicitud.horas_totales, Decimal("7.00"))
+        self.assertEqual(solicitud.duracion_estimada, Decimal("4.00"))
+        repuesto = solicitud.repuestos.get()
+        self.assertTrue(repuesto.por_equipo)
+        revisar = reverse("revisar_solicitud_cotizacion", args=[solicitud.pk])
+        self.client.force_login(self.revisora)
+        self.assertContains(self.client.post(revisar, {"decision": estado.DEVUELTA}), "Indicá qué información falta")
+        devolucion = {"decision": estado.DEVUELTA, "nota": "Indicar el código de la correa."}
+        self.assertRedirects(self.client.post(revisar, devolucion), detalle)
+        self.assertContains(self.client.post(revisar, devolucion), "La solicitud ya fue revisada.")
+        reenviar = reverse("reenviar_solicitud_cotizacion", args=[solicitud.pk])
+        self.client.force_login(self.tecnica)
+        self.assertContains(self.client.get(reenviar), devolucion["nota"])
+        correccion = {
+            **self.datos, "repuestos-INITIAL_FORMS": "1",
+            "repuestos-0-id": repuesto.pk, "repuestos-0-referencia": "REP-99",
+        }
+        self.assertRedirects(self.client.post(reenviar, correccion), detalle)
+        repuesto.refresh_from_db()
+        self.assertEqual(repuesto.referencia, "REP-99")
+        self.client.force_login(self.revisora)
+        self.assertRedirects(self.client.post(revisar, {"decision": estado.LISTA}), detalle)
+        solicitud.refresh_from_db()
+        self.assertEqual(solicitud.estado, estado.LISTA)
+        self.assertEqual(list(solicitud.cambios.order_by("pk").values_list("estado", flat=True)), [
+            estado.ENVIADA, estado.DEVUELTA, estado.ENVIADA, estado.LISTA,
+        ])
+
+    def test_rechaza_equipo_ajeno_y_preserva_cliente_del_ticket(self):
+        ajeno = self.ajeno.equipos.create(codigo="E-99", nombre="Equipo ajeno")
+        respuesta = self.client.post(self.alta, {**self.datos, "equipos": [ajeno.pk]})
+        self.assertTrue(respuesta.context["form"].has_error("equipos", "invalid_choice"))
+        self.assertFalse(self.ticket.solicitudes_cotizacion.exists())
+        self.crear_solicitud()
+        respuesta = self.client.post(reverse("vincular_ticket", args=[self.ticket.pk]), {"cliente_ficha": self.ajeno.pk})
+        self.assertContains(respuesta, "Conservá su cliente.")
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.cliente_ficha, self.cliente)
+
+    def test_alcance_de_acceso_por_rol_y_propiedad(self):
+        solicitud, detalle = self.crear_solicitud()
+        self.assertContains(self.client.get(reverse("solicitudes_cotizacion")), self.ticket.asunto)
+        self.client.force_login(self.otro)
+        self.assertNotContains(self.client.get(reverse("solicitudes_cotizacion")), self.ticket.asunto)
+        self.assertEqual(self.client.get(detalle).status_code, 404)
+        self.assertEqual(self.client.post(reverse("revisar_solicitud_cotizacion", args=[solicitud.pk])).status_code, 403)
+        self.assertNotContains(self.client.get(reverse("ticket", args=[self.ticket.pk])), detalle)
+        self.client.force_login(self.revisora)
+        self.assertContains(self.client.get(detalle), self.ticket.asunto)
+        self.assertEqual(self.client.get(self.alta).status_code, 403)

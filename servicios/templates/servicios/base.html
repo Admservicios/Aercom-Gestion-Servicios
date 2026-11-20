@@ -19,6 +19,7 @@
   <a href="{% url 'tickets' %}">Tickets</a>
   <a href="{% url 'clientes' %}">Clientes</a>
   <a href="{% url 'equipos' %}">Equipos</a>
+  {% if puede_ver_solicitudes %}<a href="{% url 'solicitudes_cotizacion' %}">Solicitudes de cotización</a>{% endif %}
   {% else %}
   <a href="{% url 'inicio' %}">Mis tareas</a>
   {% endif %}

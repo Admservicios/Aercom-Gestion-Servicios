@@ -1,0 +1,13 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>Solicitudes de cotización</h1>
+{% if puede_solicitar_cotizacion %}<p>Para iniciar una solicitud, abrí un ticket con cliente vinculado.</p>{% endif %}
+{% for solicitud in pagina %}
+<article>
+  <h2><a href="{% url 'solicitud_cotizacion' solicitud.pk %}">SC-{{ solicitud.pk }} · {{ solicitud.ticket.asunto }}</a></h2>
+  <p>{{ solicitud.ticket.cliente_nombre }} · {{ solicitud.get_estado_display }}</p>
+  <p>{{ solicitud.solicitante.get_full_name|default:solicitud.solicitante.username }} · {{ solicitud.creada_el|date:"d/m/Y H:i" }}</p>
+</article>
+{% empty %}<p>Sin solicitudes de cotización.</p>{% endfor %}
+{% include "servicios/paginacion.html" %}
+{% endblock %}

@@ -17,6 +17,20 @@
 {% if ticket.origen %}<p>Origen: {{ ticket.origen }}</p>{% endif %}
 {% if ticket.detalle %}{{ ticket.detalle|linebreaks }}{% endif %}
 <p>Creado por {{ ticket.creado_por }} · {{ ticket.creado_el|date:"d/m/Y H:i" }}</p>
+{% if puede_ver_solicitudes %}
+<article>
+<h2>Solicitudes de cotización</h2>
+{% if puede_solicitar_cotizacion %}
+  {% if ticket.cliente_ficha_id %}<p><a href="{% url 'nueva_solicitud_cotizacion' ticket.pk %}">Nueva solicitud de cotización</a></p>
+  {% else %}<p>Vinculá el ticket con un cliente para iniciar una solicitud.</p>{% endif %}
+{% endif %}
+<ul>
+  {% for solicitud in solicitudes_cotizacion %}
+  <li><a href="{% url 'solicitud_cotizacion' solicitud.pk %}">SC-{{ solicitud.pk }}</a> · {{ solicitud.get_estado_display }}</li>
+  {% empty %}<li>Sin solicitudes para mostrar.</li>{% endfor %}
+</ul>
+</article>
+{% endif %}
 <h2>Acciones</h2>
 {% for accion in acciones %}
 <article id="accion-{{ accion.pk }}">

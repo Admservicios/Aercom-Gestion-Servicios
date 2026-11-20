@@ -19,6 +19,8 @@ ROLES_OFICINA = {
     Rol.RESPONSABLE_TECNICO, Rol.OFICINA_ANTERIOR,
 }
 ROLES_SERVICIOS = ROLES_OFICINA | {Rol.CAMPO}
+ROLES_REVISION_COTIZACION = {Rol.ADMINISTRACION, Rol.COMERCIAL, Rol.RESPONSABLE, Rol.OFICINA_ANTERIOR}
+ROLES_SOLICITUD_COTIZACION = ROLES_REVISION_COTIZACION | {Rol.RESPONSABLE_TECNICO}
 ROLES_EDICION_CATALOGO = {Rol.RESPONSABLE, Rol.ADMINISTRACION, Rol.OFICINA_ANTERIOR}
 ROLES_REGISTRO_MANTENIMIENTO = ROLES_EDICION_CATALOGO | {Rol.RESPONSABLE_TECNICO}
 
@@ -61,6 +63,8 @@ def menu_por_rol(request):
     return {
         "es_oficina": bool(asignados & ROLES_OFICINA),
         "es_campo": Rol.CAMPO in asignados,
+        "puede_ver_solicitudes": bool(asignados & ROLES_SOLICITUD_COTIZACION),
+        "puede_solicitar_cotizacion": Rol.RESPONSABLE_TECNICO in asignados,
         "puede_editar_catalogo": bool(asignados & ROLES_EDICION_CATALOGO),
         "puede_registrar_mantenimiento": bool(asignados & ROLES_REGISTRO_MANTENIMIENTO),
     }

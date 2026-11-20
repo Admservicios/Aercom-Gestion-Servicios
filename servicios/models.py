@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, RegexValidator, URLValidator
@@ -294,3 +296,64 @@ class AlertaCampo(models.Model):
 
     class Meta:
         ordering = ("-creada_el", "-pk")
+
+
+class SolicitudCotizacion(models.Model):
+    class Estado(models.TextChoices):
+        ENVIADA = "enviada", "En revisión"
+        DEVUELTA = "devuelta", "Devuelta para completar"
+        LISTA = "lista", "Lista para cotizar"
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="solicitudes_cotizacion")
+    equipos = models.ManyToManyField(Equipo, blank=True, related_name="solicitudes_cotizacion")
+    solicitante = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    memoria = models.TextField("Memoria descriptiva y método de trabajo")
+    cantidad_tecnicos = models.PositiveSmallIntegerField("Cantidad de técnicos")
+    horas_por_tecnico = models.DecimalField(
+        "Horas estimadas por técnico", max_digits=6, decimal_places=2, validators=[MinValueValidator(0)],
+    )
+    duracion_estimada = models.DecimalField(
+        "Duración estimada de la intervención (horas)", max_digits=6, decimal_places=2,
+        blank=True, null=True, validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    adicionales = models.TextField(blank=True)
+    referencia_origen = models.CharField("Llamada SAP o referencia de origen", max_length=120, blank=True)
+    prioridad = models.CharField("Prioridad o indicación para la visita", max_length=160, blank=True)
+    estado = models.CharField(max_length=10, choices=Estado, default=Estado.ENVIADA)
+    creada_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-creada_el", "-pk")
+
+    def clean(self):
+        if (
+            self.cantidad_tecnicos is not None and self.horas_por_tecnico is not None
+            and bool(self.cantidad_tecnicos) != bool(self.horas_por_tecnico)
+        ):
+            raise ValidationError({"horas_por_tecnico": "Indicá técnicos y horas, o ingresá cero en ambos campos."})
+
+    @property
+    def horas_totales(self):
+        return self.cantidad_tecnicos * self.horas_por_tecnico
+
+
+class RepuestoSolicitud(models.Model):
+    solicitud = models.ForeignKey(SolicitudCotizacion, on_delete=models.CASCADE, related_name="repuestos")
+    descripcion = models.CharField("Descripción", max_length=160)
+    referencia = models.CharField("Código o referencia", max_length=80, blank=True)
+    cantidad = models.DecimalField(max_digits=9, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))])
+    por_equipo = models.BooleanField("Cantidad por equipo", default=False)
+
+    class Meta:
+        ordering = ("pk",)
+
+
+class CambioSolicitud(models.Model):
+    solicitud = models.ForeignKey(SolicitudCotizacion, on_delete=models.CASCADE, related_name="cambios")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    estado = models.CharField(max_length=10, choices=SolicitudCotizacion.Estado)
+    nota = models.TextField(blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)

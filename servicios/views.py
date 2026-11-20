@@ -10,6 +10,7 @@ from django.views.decorators.http import require_POST
 from .forms import TicketForm, VinculoTicketForm
 from .models import Accion, CambioAccion, Ticket
 from .permisos import ROLES_SERVICIOS, es_oficina, oficina_requerida, servicios_requeridos
+from .solicitudes import solicitudes_visibles
 
 
 class ResponsableField(forms.ModelChoiceField):
@@ -106,12 +107,18 @@ def nuevo(request):
 
 
 @oficina_requerida
+@transaction.atomic
 def vincular_ticket(request, pk):
-    registro = get_object_or_404(Ticket, pk=pk)
+    registros = Ticket.objects.select_for_update() if request.method == "POST" else Ticket.objects
+    registro = get_object_or_404(registros, pk=pk)
+    cliente_anterior = registro.cliente_ficha_id
     form = VinculoTicketForm(request.POST if request.method == "POST" else None, instance=registro)
     if form.is_bound and form.is_valid():
-        form.instance.save(update_fields=VinculoTicketForm.Meta.fields)
-        return redirect("ticket", pk=pk)
+        if registro.cliente_ficha_id != cliente_anterior and registro.solicitudes_cotizacion.exists():
+            form.add_error("cliente_ficha", "El ticket tiene solicitudes de cotización asociadas. Conservá su cliente.")
+        else:
+            form.instance.save(update_fields=VinculoTicketForm.Meta.fields)
+            return redirect("ticket", pk=pk)
     return render(request, "servicios/vincular_ticket.html", {"ticket": registro, "form": form})
 
 
@@ -121,6 +128,7 @@ def ver_ticket(request, registro, form, estado_form=None, accion_id=None):
     ).order_by("pk")
     return render(request, "servicios/ticket.html", {
         "ticket": registro, "acciones": acciones, "form": form,
+        "solicitudes_cotizacion": solicitudes_visibles(request.user).filter(ticket=registro),
         "estado_form": estado_form or EstadoForm(auto_id=False), "accion_id": accion_id,
     })
 
