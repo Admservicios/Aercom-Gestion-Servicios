@@ -1,5 +1,7 @@
 import json
+from pathlib import Path
 from secrets import token_urlsafe
+from tempfile import NamedTemporaryFile
 
 from django.conf import settings
 from django.contrib.auth.models import Group, User
@@ -7,35 +9,60 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from servicios.models import Accion, Cliente, Equipo, Planta, Ticket
+from servicios.permisos import ROLES_SERVICIOS, Rol
+
+
+CUENTAS = {
+    "oficina.demo": ("Inés", Rol.ADMINISTRACION),
+    "responsable.demo": ("Julia", Rol.RESPONSABLE),
+    "comercial.demo": ("Lucas", Rol.COMERCIAL),
+    "coordinacion.demo": ("Camila", Rol.COORDINACION),
+    "tecnica1.demo": ("Sofía", Rol.RESPONSABLE_TECNICO),
+    "tecnica2.demo": ("Julián", Rol.RESPONSABLE_TECNICO),
+    "campo.demo": ("Bruno", Rol.CAMPO),
+    "campo2.demo": ("Nicolás", Rol.CAMPO),
+    "campo3.demo": ("Vera", Rol.CAMPO),
+    "campo4.demo": ("Mateo", Rol.CAMPO),
+}
+
+
+def preparar_claves(ruta):
+    ruta.parent.mkdir(mode=0o700, exist_ok=True)
+    claves = json.loads(ruta.read_text()) if ruta.exists() else {}
+    faltantes = CUENTAS.keys() - claves.keys()
+    if faltantes:
+        claves.update({usuario: token_urlsafe(18) for usuario in sorted(faltantes)})
+        with NamedTemporaryFile(mode="w", dir=ruta.parent, delete=False) as temporal:
+            json.dump(claves, temporal, indent=2)
+            temporal.write("\n")
+        Path(temporal.name).replace(ruta)
+    return claves
 
 
 class Command(BaseCommand):
-    help = "Inicializa dos cuentas ficticias y un ticket de ejemplo."
+    help = "Inicializa las cuentas ficticias por función y datos de ejemplo."
 
     @transaction.atomic
     def handle(self, *args, **options):
         ruta = settings.BASE_DIR / ".aercom-demo" / "cuentas.json"
-        ruta.parent.mkdir(mode=0o700, exist_ok=True)
-        cuentas = {"oficina.demo": "Inés", "campo.demo": "Bruno"}
-        if not ruta.exists():
-            ruta.touch(mode=0o600, exist_ok=False)
-            ruta.write_text(json.dumps({usuario: token_urlsafe(18) for usuario in cuentas}, indent=2) + "\n")
-        claves = json.loads(ruta.read_text())
-        oficina, _ = Group.objects.get_or_create(name="Oficina")
+        claves = preparar_claves(ruta)
         personas = {}
-        nuevas = []
-        for usuario, nombre in cuentas.items():
+        nuevas = set()
+        for usuario, (nombre, rol) in CUENTAS.items():
             persona, nueva = User.objects.get_or_create(
                 username=usuario, defaults={"first_name": nombre, "last_name": "Demo"},
             )
             if not persona.check_password(claves[usuario]):
                 persona.set_password(claves[usuario])
                 persona.save(update_fields=["password"])
+            grupo, _ = Group.objects.get_or_create(name=rol)
+            anteriores = persona.groups.filter(name__in=ROLES_SERVICIOS).exclude(pk=grupo.pk)
+            persona.groups.remove(*anteriores)
+            persona.groups.add(grupo)
             personas[usuario] = persona
-            nuevas.append(nueva)
+            if nueva:
+                nuevas.add(usuario)
         ines, bruno = personas["oficina.demo"], personas["campo.demo"]
-        ines.groups.add(oficina)
-        bruno.groups.remove(oficina)
         abonado, _ = Cliente.objects.get_or_create(
             codigo="DEMO-AB-01", defaults={"nombre": "Industrias Horizonte (demo)", "tipo": Cliente.Tipo.ABONADO},
         )
@@ -57,7 +84,7 @@ class Command(BaseCommand):
         Equipo.objects.get_or_create(
             cliente=tercero, codigo="DEMO-GE-02", defaults={"nombre": "Generador GE-02"},
         )
-        if all(nuevas):
+        if {"oficina.demo", "campo.demo"} <= nuevas:
             ticket = Ticket.objects.create(
                 asunto="Lavado y revisión de vibración", cliente_ficha=abonado,
                 planta_ficha=planta, equipo_ficha=equipo, origen="Visita programada", creado_por=ines,

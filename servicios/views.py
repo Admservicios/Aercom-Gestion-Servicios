@@ -1,6 +1,5 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import F, Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -9,7 +8,7 @@ from django.views.decorators.http import require_POST
 
 from .forms import TicketForm, VinculoTicketForm
 from .models import Accion, CambioAccion, Ticket
-from .permisos import es_oficina, oficina_requerida
+from .permisos import ROLES_SERVICIOS, es_oficina, oficina_requerida, servicios_requeridos
 
 
 class ResponsableField(forms.ModelChoiceField):
@@ -19,7 +18,9 @@ class ResponsableField(forms.ModelChoiceField):
 
 class AccionForm(forms.ModelForm):
     responsable = ResponsableField(
-        queryset=get_user_model().objects.filter(is_active=True).order_by("first_name")
+        queryset=get_user_model().objects.filter(
+            is_active=True, groups__name__in=ROLES_SERVICIOS,
+        ).order_by("first_name", "username").distinct()
     )
 
     class Meta:
@@ -53,7 +54,7 @@ def ver_campo(request, formulario=None, accion_id=None):
     })
 
 
-@login_required
+@servicios_requeridos
 def inicio(request):
     if not es_oficina(request.user):
         return ver_campo(request)
@@ -138,7 +139,7 @@ def volver_a_accion(request, accion):
     return redirect("inicio")
 
 
-@login_required
+@servicios_requeridos
 @require_POST
 @transaction.atomic
 def realizar(request, pk):
@@ -151,7 +152,7 @@ def realizar(request, pk):
     return volver_a_accion(request, accion)
 
 
-@login_required
+@servicios_requeridos
 @require_POST
 @transaction.atomic
 def cambiar_estado(request, pk):

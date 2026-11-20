@@ -150,3 +150,15 @@ class CambioAccion(models.Model):
 
     class Meta:
         ordering = ("pk",)
+
+
+class AlertaCampo(models.Model):
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="alertas_campo")
+    accion = models.ForeignKey(
+        Accion, on_delete=models.PROTECT, related_name="alertas", null=True, blank=True,
+    )
+    detalle = models.TextField(max_length=2000)
+    creada_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-creada_el", "-pk")

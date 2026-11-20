@@ -1,6 +1,6 @@
 from django.contrib.auth import views as auth
 from django.urls import path
-from . import catalogo, views
+from . import alertas, catalogo, views
 
 urlpatterns = [
     path("", views.inicio, name="inicio"),
@@ -15,6 +15,8 @@ urlpatterns = [
     path("equipos/", catalogo.equipos, name="equipos"),
     path("equipos/nuevo/", catalogo.nuevo_equipo, name="nuevo_equipo"),
     path("equipos/<int:pk>/", catalogo.equipo, name="equipo"),
+    path("alertas/", alertas.alertas, name="alertas"),
+    path("alertas/nueva/", alertas.nueva_alerta, name="nueva_alerta"),
     path("tickets/nuevo/", views.nuevo, name="nuevo"),
     path("tickets/<int:pk>/", views.ticket, name="ticket"),
     path("tickets/<int:pk>/vincular/", views.vincular_ticket, name="vincular_ticket"),

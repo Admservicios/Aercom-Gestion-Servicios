@@ -1,7 +1,7 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
 <h1>Equipos</h1>
-<p><a class="boton" href="{% url 'nuevo_equipo' %}">Nuevo equipo</a></p>
+{% if puede_editar_catalogo %}<p><a class="boton" href="{% url 'nuevo_equipo' %}">Nuevo equipo</a></p>{% endif %}
 <article>
   <form method="get">
     <label for="q">Buscar por nombre, código, número de serie, cliente o planta</label>

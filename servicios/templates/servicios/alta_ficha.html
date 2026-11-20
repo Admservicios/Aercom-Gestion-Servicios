@@ -1,5 +1,5 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
 <h1>{{ titulo }}</h1>
-<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Guardar ficha</button></form></article>
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>{{ texto_boton|default:"Guardar ficha" }}</button></form></article>
 {% endblock %}

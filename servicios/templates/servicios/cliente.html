@@ -5,7 +5,7 @@
 {% if cliente.referencia_sap %}<p>Referencia SAP: {{ cliente.referencia_sap }}</p>{% endif %}
 <article>
   <h2>Plantas</h2>
-  <p><a href="{% url 'nueva_planta' %}?cliente={{ cliente.pk }}">Nueva planta</a></p>
+  {% if puede_editar_catalogo %}<p><a href="{% url 'nueva_planta' %}?cliente={{ cliente.pk }}">Nueva planta</a></p>{% endif %}
   <ul>
     {% for planta in cliente.plantas.all %}
     <li><a href="{% url 'planta' planta.pk %}">{{ planta.nombre }}</a> · {{ planta.codigo }}</li>
@@ -14,7 +14,7 @@
 </article>
 <article>
   <h2>Equipos</h2>
-  <p><a href="{% url 'nuevo_equipo' %}?cliente={{ cliente.pk }}">Nuevo equipo</a></p>
+  {% if puede_editar_catalogo %}<p><a href="{% url 'nuevo_equipo' %}?cliente={{ cliente.pk }}">Nuevo equipo</a></p>{% endif %}
   <ul>
     {% for equipo in equipos %}
     <li><a href="{% url 'equipo' equipo.pk %}">{{ equipo.nombre }} ({{ equipo.codigo }})</a>

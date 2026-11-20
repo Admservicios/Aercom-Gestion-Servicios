@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import ClienteForm, EquipoForm, PlantaForm
 from .models import Cliente, Equipo, Planta
-from .permisos import oficina_requerida
+from .permisos import edicion_catalogo_requerida, oficina_requerida
 
 
 @oficina_requerida
@@ -70,7 +70,7 @@ def alta(request, formulario, titulo, destino, initial=None):
     return render(request, "servicios/alta_ficha.html", {"form": form, "titulo": titulo})
 
 
-@oficina_requerida
+@edicion_catalogo_requerida
 def nuevo_cliente(request):
     return alta(
         request, ClienteForm, "Nuevo cliente", lambda registro: redirect("cliente", pk=registro.pk),
@@ -78,7 +78,7 @@ def nuevo_cliente(request):
     )
 
 
-@oficina_requerida
+@edicion_catalogo_requerida
 def nueva_planta(request):
     return alta(
         request, PlantaForm, "Nueva planta", lambda registro: redirect("planta", pk=registro.pk),
@@ -86,7 +86,7 @@ def nueva_planta(request):
     )
 
 
-@oficina_requerida
+@edicion_catalogo_requerida
 def nuevo_equipo(request):
     return alta(
         request, EquipoForm, "Nuevo equipo", lambda registro: redirect("equipo", pk=registro.pk),
