@@ -77,9 +77,9 @@ class PilotoTest(TestCase):
 
         self.ingresar(self.oficina)
         for consulta in (f"T-{ticket.pk}", ticket.asunto, ticket.cliente_nombre, ticket.equipo_nombre):
-            self.assertContains(self.client.get(reverse("inicio"), {"q": consulta}), ticket.asunto)
-        self.assertContains(self.client.get(reverse("inicio"), {"responsable": self.oficina.pk}), ticket.asunto)
-        self.assertNotContains(self.client.get(reverse("inicio"), {"responsable": self.campo.pk}), ticket.asunto)
+            self.assertContains(self.client.get(reverse("tickets"), {"q": consulta}), ticket.asunto)
+        self.assertContains(self.client.get(reverse("tickets"), {"responsable": self.oficina.pk}), ticket.asunto)
+        self.assertNotContains(self.client.get(reverse("tickets"), {"responsable": self.campo.pk}), ticket.asunto)
         respuesta = self.client.get(detalle)
         for texto in ("Abierto", "Realizada por Bruno Prueba", "sin cargo adicional", revision.titulo, "Inés Prueba"):
             self.assertContains(respuesta, texto)
@@ -132,6 +132,38 @@ class CatalogoTest(TestCase):
         self.assertContains(clientes, reverse("equipo", args=[self.equipo.pk]))
         self.assertContains(self.client.get(reverse("equipos"), {"q": "SERIE-123"}), self.equipo.nombre)
         self.assertContains(self.client.get(reverse("planta", args=[self.planta.pk])), self.equipo.nombre)
+
+    def test_menu_de_oficina_y_ticket_desde_equipo(self):
+        menu = self.client.get(reverse("inicio"))
+        self.assertContains(menu, "Menú de Oficina")
+        for vista in ("tickets", "clientes", "equipos"):
+            self.assertContains(menu, f'href="{reverse(vista)}"')
+        clientes = self.client.get(reverse("clientes"), {"q": self.tercero.codigo})
+        self.assertContains(clientes, self.tercero.nombre)
+        self.assertNotContains(clientes, self.abonado.nombre)
+        self.assertContains(clientes, reverse("abonados"))
+        self.assertContains(clientes, reverse("terceros"))
+        ficha = self.client.get(reverse("equipo", args=[self.equipo.pk]))
+        self.assertContains(ficha, reverse("cliente", args=[self.abonado.pk]))
+        self.assertContains(ficha, reverse("planta", args=[self.planta.pk]))
+        valores = {
+            "cliente_ficha": str(self.abonado.pk), "equipo_ficha": str(self.equipo.pk),
+            "planta_ficha": str(self.planta.pk),
+        }
+        nuevo = reverse("nuevo")
+        formulario = self.client.get(nuevo, valores).context["form"]
+        self.assertEqual(formulario.initial, valores)
+        respuesta = self.client.post(nuevo, {"asunto": "Servicio desde equipo", **valores, "tipo": "tercero"})
+        ticket = Ticket.objects.get()
+        detalle = reverse("ticket", args=[ticket.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertContains(self.client.get(detalle), "Abonado")
+        self.assertContains(self.client.get(reverse("cliente", args=[self.abonado.pk])), ticket.asunto)
+
+        self.client.force_login(self.campo)
+        self.assertNotContains(self.client.get(reverse("inicio")), "Menú de Oficina")
+        self.assertEqual(self.client.get(reverse("clientes")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("tickets")).status_code, 403)
 
     def test_altas_desde_el_catalogo(self):
         respuesta = self.client.post(reverse("nuevo_cliente"), {
@@ -280,7 +312,7 @@ class PermisosPorRolTest(TestCase):
             with self.subTest(rol=rol):
                 self.comercial.groups.set([Group.objects.get_or_create(name=rol)[0]])
                 self.client.force_login(self.comercial)
-                self.assertContains(self.client.get(reverse("inicio")), self.ticket.asunto)
+                self.assertContains(self.client.get(reverse("tickets")), self.ticket.asunto)
                 respuesta = self.client.post(reverse("nuevo"), {
                     "asunto": f"Ticket de {rol}", "cliente_ficha": self.cliente.pk,
                 })

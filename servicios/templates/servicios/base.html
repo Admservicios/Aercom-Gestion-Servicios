@@ -11,12 +11,13 @@
 <header><div class="marca">Aercom <span>/ Servicios</span></div>
 {% if user.is_authenticated %}<form method="post" action="{% url 'salir' %}">{% csrf_token %}<span>{{ user.get_full_name|default:user.username }}</span> <button>Salir</button></form>{% endif %}
 </header>
+{% block navegacion %}
 {% if es_oficina or es_campo %}
 <nav class="menu-servicios" aria-label="Módulos">
   {% if es_oficina %}
-  <a href="{% url 'inicio' %}">Tickets</a>
-  <a href="{% url 'abonados' %}">Abonados</a>
-  <a href="{% url 'terceros' %}">Terceros</a>
+  <a href="{% url 'inicio' %}">Inicio</a>
+  <a href="{% url 'tickets' %}">Tickets</a>
+  <a href="{% url 'clientes' %}">Clientes</a>
   <a href="{% url 'equipos' %}">Equipos</a>
   {% else %}
   <a href="{% url 'inicio' %}">Mis tareas</a>
@@ -25,6 +26,7 @@
   {% if es_campo %}<a href="{% url 'nueva_alerta' %}">Reportar alerta</a>{% endif %}
 </nav>
 {% endif %}
+{% endblock %}
 <main>{% block contenido %}{% endblock %}</main>
 </body>
 </html>

@@ -1,7 +1,12 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<h1>{% if tipo == "abonado" %}Abonados{% else %}Terceros{% endif %}</h1>
-{% if puede_editar_catalogo %}<p><a class="boton" href="{% url 'nuevo_cliente' %}?tipo={{ tipo }}">Nuevo cliente</a></p>{% endif %}
+<h1>{% if tipo == "abonado" %}Abonados{% elif tipo == "tercero" %}Terceros{% else %}Clientes{% endif %}</h1>
+{% if puede_editar_catalogo %}<p><a class="boton" href="{% url 'nuevo_cliente' %}{% if tipo %}?tipo={{ tipo }}{% endif %}">Nuevo cliente</a></p>{% endif %}
+<nav class="submodulos" aria-label="Clasificación de clientes">
+  <a href="{% url 'clientes' %}"{% if not tipo %} aria-current="page"{% endif %}>Todos</a>
+  <a href="{% url 'abonados' %}"{% if tipo == "abonado" %} aria-current="page"{% endif %}>Abonados</a>
+  <a href="{% url 'terceros' %}"{% if tipo == "tercero" %} aria-current="page"{% endif %}>Terceros</a>
+</nav>
 <article>
   <form method="get">
     <label for="q">Buscar por nombre, código o referencia SAP</label>
@@ -10,7 +15,7 @@
   </form>
   <ul>
     {% for cliente in pagina %}
-    <li><a href="{% url 'cliente' cliente.pk %}">{{ cliente.nombre }}</a> · {{ cliente.codigo }}</li>
+    <li><a href="{% url 'cliente' cliente.pk %}">{{ cliente.nombre }}</a> · {{ cliente.codigo }}{% if not tipo %} · {{ cliente.get_tipo_display }}{% endif %}</li>
     {% empty %}<li>Sin clientes para mostrar.</li>{% endfor %}
   </ul>
   {% include "servicios/paginacion.html" %}

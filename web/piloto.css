@@ -9,3 +9,8 @@ header button { background: #2f5a70; }
 li + li { margin-top: .5rem; }
 .menu-servicios { display: flex; flex-wrap: wrap; gap: .6rem 1.25rem; padding: .7rem 1.5rem; background: #e3eff6; }
 .menu-servicios a { color: #123d59; font-weight: 650; }
+.modulos-oficina { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 1rem; }
+.modulos-oficina a { display: block; padding: 1.2rem; border: 1px solid #b6cad7; border-radius: .65rem; background: white; color: #123d59; font-weight: 700; font-size: 1.1rem; }
+.modulos-oficina a:hover { border-color: #145976; background: #e3eff6; }
+.submodulos { display: flex; flex-wrap: wrap; gap: .65rem 1.25rem; margin-bottom: 1rem; }
+.submodulos [aria-current="page"] { font-weight: 700; }

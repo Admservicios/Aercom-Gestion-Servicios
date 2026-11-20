@@ -1,7 +1,6 @@
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import F, Q
-from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import ClienteForm, ContactoClienteForm, DocumentoClienteForm, EquipoForm, PlantaForm
@@ -10,11 +9,11 @@ from .permisos import edicion_catalogo_requerida, oficina_requerida
 
 
 @oficina_requerida
-def clientes(request, tipo):
-    if tipo not in Cliente.Tipo.values:
-        raise Http404
+def clientes(request, tipo=None):
     consulta = request.GET.get("q", "").strip()
-    registros = Cliente.objects.filter(tipo=tipo)
+    registros = Cliente.objects.all()
+    if tipo:
+        registros = registros.filter(tipo=tipo)
     if consulta:
         registros = registros.filter(
             Q(nombre__icontains=consulta) | Q(codigo__icontains=consulta) | Q(referencia_sap__icontains=consulta),

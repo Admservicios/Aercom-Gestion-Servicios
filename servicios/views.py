@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import F, Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -58,6 +59,13 @@ def ver_campo(request, formulario=None, accion_id=None):
 def inicio(request):
     if not es_oficina(request.user):
         return ver_campo(request)
+    if "q" in request.GET or "responsable" in request.GET:
+        return redirect(f"{reverse('tickets')}?{request.GET.urlencode()}")
+    return render(request, "servicios/menu_oficina.html")
+
+
+@oficina_requerida
+def tickets(request):
     consulta = request.GET.get("q", "").strip()
     tickets = Ticket.objects.select_related("cliente_ficha").order_by("-pk")
     if consulta:
@@ -85,7 +93,10 @@ def inicio(request):
 
 @oficina_requerida
 def nuevo(request):
-    form = TicketForm(request.POST if request.method == "POST" else None)
+    form = TicketForm(
+        request.POST if request.method == "POST" else None,
+        initial={campo: request.GET.get(campo) for campo in VinculoTicketForm.Meta.fields},
+    )
     if form.is_bound and form.is_valid():
         registro = form.save(commit=False)
         registro.creado_por = request.user

@@ -1,6 +1,6 @@
 {% extends "servicios/base.html" %}
 {% block contenido %}
-<p><a href="{% url 'inicio' %}">Volver a tickets</a></p>
+<p><a href="{% url 'tickets' %}">Volver a tickets</a></p>
 <p class="contexto">Ticket T-{{ ticket.pk }} · Abierto</p>
 <h1>{{ ticket.asunto }}</h1>
 {% if ticket.cliente_ficha_id %}

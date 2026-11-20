@@ -2,6 +2,7 @@
 {% block contenido %}
 <p><a href="{% url 'equipos' %}">Volver a equipos</a></p>
 <h1>{{ equipo.nombre }}</h1>
+<p><a class="boton" href="{% url 'nuevo' %}?cliente_ficha={{ equipo.cliente_id }}&amp;equipo_ficha={{ equipo.pk }}{% if equipo.planta_id %}&amp;planta_ficha={{ equipo.planta_id }}{% endif %}">Nuevo ticket</a></p>
 <article>
   <dl>
     <dt>Código</dt><dd>{{ equipo.codigo }}</dd>
