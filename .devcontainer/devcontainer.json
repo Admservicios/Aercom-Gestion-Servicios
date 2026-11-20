@@ -3,11 +3,17 @@
   "dockerComposeFile": "compose.yml",
   "service": "app",
   "workspaceFolder": "/workspaces/Aercom-Gestion-Servicios",
-  "forwardPorts": [8000],
+  "forwardPorts": [
+    8000
+  ],
   "portsAttributes": {
-    "8000": {"label": "Aercom · Piloto", "onAutoForward": "notify"}
+    "8000": {
+      "label": "Aercom · Piloto",
+      "onAutoForward": "notify"
+    }
   },
   "initializeCommand": "bash .devcontainer/preparar-db.sh",
   "postCreateCommand": "python -m pip install --user -r requirements.txt",
-  "postStartCommand": "bash .devcontainer/iniciar.sh"
+  "postStartCommand": "bash .devcontainer/iniciar.sh",
+  "remoteUser": "vscode"
 }
