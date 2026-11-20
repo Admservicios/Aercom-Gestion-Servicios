@@ -6,6 +6,6 @@
 <form method="get"><label for="q">Buscar por número, asunto, cliente o equipo</label>
 <input id="q" name="q" value="{{ consulta }}">
 {{ filtro_form.responsable.as_field_group }}<button>Buscar</button></form>
-<ul>{% for ticket in tickets %}<li><a href="{% url 'ticket' ticket.pk %}">T-{{ ticket.pk }} · {{ ticket.asunto }}</a> · {{ ticket.cliente }}</li>{% empty %}<li>Sin tickets para mostrar.</li>{% endfor %}</ul>
+<ul>{% for ticket in tickets %}<li><a href="{% url 'ticket' ticket.pk %}">T-{{ ticket.pk }} · {{ ticket.asunto }}</a> · {{ ticket.cliente_nombre }}</li>{% empty %}<li>Sin tickets para mostrar.</li>{% endfor %}</ul>
 </article>
 {% endblock %}

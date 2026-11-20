@@ -11,6 +11,14 @@
 <header><div class="marca">Aercom <span>/ Servicios</span></div>
 {% if user.is_authenticated %}<form method="post" action="{% url 'salir' %}">{% csrf_token %}<span>{{ user.get_full_name|default:user.username }}</span> <button>Salir</button></form>{% endif %}
 </header>
+{% if es_oficina %}
+<nav class="menu-servicios" aria-label="Módulos">
+  <a href="{% url 'inicio' %}">Tickets</a>
+  <a href="{% url 'abonados' %}">Abonados</a>
+  <a href="{% url 'terceros' %}">Terceros</a>
+  <a href="{% url 'equipos' %}">Equipos</a>
+</nav>
+{% endif %}
 <main>{% block contenido %}{% endblock %}</main>
 </body>
 </html>

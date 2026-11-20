@@ -1,0 +1,10 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'ticket' ticket.pk %}">Volver al ticket T-{{ ticket.pk }}</a></p>
+<h1>Vincular ticket con fichas</h1>
+<p>{{ ticket.asunto }}</p>
+{% if ticket.cliente or ticket.planta or ticket.equipo %}
+<p>Datos del ticket original: {{ ticket.cliente }}{% if ticket.planta %} · {{ ticket.planta }}{% endif %}{% if ticket.equipo %} · {{ ticket.equipo }}{% endif %}</p>
+{% endif %}
+<article><form method="post">{% csrf_token %}{{ form.as_p }}<button>Guardar vínculos</button></form></article>
+{% endblock %}

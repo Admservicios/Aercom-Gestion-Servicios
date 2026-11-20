@@ -1,20 +1,15 @@
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import F, Prefetch, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from .forms import TicketForm, VinculoTicketForm
 from .models import Accion, CambioAccion, Ticket
-
-
-class TicketForm(forms.ModelForm):
-    class Meta:
-        model = Ticket
-        fields = ("asunto", "detalle", "origen", "cliente", "planta", "equipo")
+from .permisos import es_oficina, oficina_requerida
 
 
 class ResponsableField(forms.ModelChoiceField):
@@ -47,17 +42,10 @@ class EstadoForm(forms.Form):
         return datos
 
 
-def es_oficina(user):
-    return user.groups.filter(name="Oficina").exists()
-
-
-def verificar_oficina(user):
-    if not es_oficina(user):
-        raise PermissionDenied
-
-
 def ver_campo(request, formulario=None, accion_id=None):
-    acciones = Accion.objects.filter(responsable=request.user).select_related("ticket").order_by(
+    acciones = Accion.objects.filter(responsable=request.user).select_related(
+        "ticket__cliente_ficha", "ticket__equipo_ficha",
+    ).order_by(
         F("realizada_el").asc(nulls_first=True), "-asignada_el",
     )
     return render(request, "servicios/campo.html", {
@@ -70,9 +58,13 @@ def inicio(request):
     if not es_oficina(request.user):
         return ver_campo(request)
     consulta = request.GET.get("q", "").strip()
-    tickets = Ticket.objects.order_by("-pk")
+    tickets = Ticket.objects.select_related("cliente_ficha").order_by("-pk")
     if consulta:
-        filtro = Q(asunto__icontains=consulta) | Q(cliente__icontains=consulta) | Q(equipo__icontains=consulta)
+        filtro = (
+            Q(asunto__icontains=consulta) | Q(cliente__icontains=consulta) | Q(equipo__icontains=consulta)
+            | Q(cliente_ficha__nombre__icontains=consulta) | Q(cliente_ficha__codigo__icontains=consulta)
+            | Q(equipo_ficha__nombre__icontains=consulta) | Q(equipo_ficha__codigo__icontains=consulta)
+        )
         numero = consulta.upper().removeprefix("T-")
         if numero.isascii() and numero.isdecimal() and len(numero) <= 18:
             filtro |= Q(pk=int(numero))
@@ -90,9 +82,8 @@ def inicio(request):
     })
 
 
-@login_required
+@oficina_requerida
 def nuevo(request):
-    verificar_oficina(request.user)
     form = TicketForm(request.POST if request.method == "POST" else None)
     if form.is_bound and form.is_valid():
         registro = form.save(commit=False)
@@ -100,6 +91,16 @@ def nuevo(request):
         registro.save()
         return redirect("ticket", pk=registro.pk)
     return render(request, "servicios/nuevo.html", {"form": form})
+
+
+@oficina_requerida
+def vincular_ticket(request, pk):
+    registro = get_object_or_404(Ticket, pk=pk)
+    form = VinculoTicketForm(request.POST if request.method == "POST" else None, instance=registro)
+    if form.is_bound and form.is_valid():
+        form.instance.save(update_fields=VinculoTicketForm.Meta.fields)
+        return redirect("ticket", pk=pk)
+    return render(request, "servicios/vincular_ticket.html", {"ticket": registro, "form": form})
 
 
 def ver_ticket(request, registro, form, estado_form=None, accion_id=None):
@@ -112,16 +113,14 @@ def ver_ticket(request, registro, form, estado_form=None, accion_id=None):
     })
 
 
-@login_required
+@oficina_requerida
 def ticket(request, pk):
-    verificar_oficina(request.user)
     return ver_ticket(request, get_object_or_404(Ticket, pk=pk), AccionForm())
 
 
-@login_required
+@oficina_requerida
 @require_POST
 def agregar(request, pk):
-    verificar_oficina(request.user)
     registro = get_object_or_404(Ticket, pk=pk)
     form = AccionForm(request.POST)
     if form.is_valid():

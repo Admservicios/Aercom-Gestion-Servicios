@@ -1,0 +1,19 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>Equipos</h1>
+<p><a class="boton" href="{% url 'nuevo_equipo' %}">Nuevo equipo</a></p>
+<article>
+  <form method="get">
+    <label for="q">Buscar por nombre, código, número de serie, cliente o planta</label>
+    <input id="q" name="q" value="{{ consulta }}">
+    <button>Buscar</button>
+  </form>
+  <ul>
+    {% for equipo in pagina %}
+    <li><a href="{% url 'equipo' equipo.pk %}">{{ equipo.nombre }} ({{ equipo.codigo }})</a>
+        · {{ equipo.cliente.nombre }}{% if equipo.planta %} · {{ equipo.planta.nombre }}{% endif %}</li>
+    {% empty %}<li>Sin equipos para mostrar.</li>{% endfor %}
+  </ul>
+  {% include "servicios/paginacion.html" %}
+</article>
+{% endblock %}

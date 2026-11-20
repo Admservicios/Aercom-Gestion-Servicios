@@ -6,7 +6,7 @@ from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from servicios.models import Accion, Ticket
+from servicios.models import Accion, Cliente, Equipo, Planta, Ticket
 
 
 class Command(BaseCommand):
@@ -36,10 +36,31 @@ class Command(BaseCommand):
         ines, bruno = personas["oficina.demo"], personas["campo.demo"]
         ines.groups.add(oficina)
         bruno.groups.remove(oficina)
+        abonado, _ = Cliente.objects.get_or_create(
+            codigo="DEMO-AB-01", defaults={"nombre": "Industrias Horizonte (demo)", "tipo": Cliente.Tipo.ABONADO},
+        )
+        tercero, _ = Cliente.objects.get_or_create(
+            codigo="DEMO-TE-01", defaults={"nombre": "Taller del Sur (demo)", "tipo": Cliente.Tipo.TERCERO},
+        )
+        planta, _ = Planta.objects.get_or_create(
+            cliente=abonado, codigo="DEMO-NORTE", defaults={"nombre": "Planta Norte (demo)"},
+        )
+        deposito, _ = Planta.objects.get_or_create(
+            cliente=abonado, codigo="DEMO-DEPOSITO", defaults={"nombre": "Depósito (demo)"},
+        )
+        equipo, _ = Equipo.objects.get_or_create(
+            cliente=abonado, codigo="DEMO-GE-01", defaults={"nombre": "Generador GE-01", "planta": planta},
+        )
+        Equipo.objects.get_or_create(
+            cliente=abonado, codigo="DEMO-CO-02", defaults={"nombre": "Compresor CO-02", "planta": deposito},
+        )
+        Equipo.objects.get_or_create(
+            cliente=tercero, codigo="DEMO-GE-02", defaults={"nombre": "Generador GE-02"},
+        )
         if all(nuevas):
             ticket = Ticket.objects.create(
-                asunto="Lavado y revisión de vibración", cliente="Industrias Horizonte (demo)",
-                equipo="Generador GE-01", origen="Visita programada", creado_por=ines,
+                asunto="Lavado y revisión de vibración", cliente_ficha=abonado,
+                planta_ficha=planta, equipo_ficha=equipo, origen="Visita programada", creado_por=ines,
             )
             Accion.objects.bulk_create([
                 Accion(ticket=ticket, titulo="Lavado incluido en el abono", responsable=bruno,

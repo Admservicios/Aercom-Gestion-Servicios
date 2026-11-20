@@ -30,7 +30,10 @@ ROOT_URLCONF = "servicios.urls"
 TEMPLATES = [{
     "BACKEND": "django.template.backends.django.DjangoTemplates",
     "APP_DIRS": True,
-    "OPTIONS": {"context_processors": ["django.contrib.auth.context_processors.auth"]},
+    "OPTIONS": {"context_processors": [
+        "django.contrib.auth.context_processors.auth",
+        "servicios.permisos.menu_por_rol",
+    ]},
 }]
 if os.environ.get("POSTGRES_HOST"):
     DATABASES = {"default": {

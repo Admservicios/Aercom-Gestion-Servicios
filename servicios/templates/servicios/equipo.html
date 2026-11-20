@@ -1,0 +1,14 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'equipos' %}">Volver a equipos</a></p>
+<h1>{{ equipo.nombre }}</h1>
+<article>
+  <dl>
+    <dt>Código</dt><dd>{{ equipo.codigo }}</dd>
+    <dt>Cliente</dt><dd><a href="{% url 'cliente' equipo.cliente_id %}">{{ equipo.cliente.nombre }}</a></dd>
+    <dt>Planta</dt><dd>{% if equipo.planta_id %}<a href="{% url 'planta' equipo.planta_id %}">{{ equipo.planta.nombre }}</a>{% else %}Sin planta registrada{% endif %}</dd>
+    {% if equipo.numero_serie %}<dt>Número de serie</dt><dd>{{ equipo.numero_serie }}</dd>{% endif %}
+  </dl>
+</article>
+{% include "servicios/tickets_vinculados.html" %}
+{% endblock %}

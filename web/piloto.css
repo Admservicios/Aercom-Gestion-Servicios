@@ -7,3 +7,5 @@ button, .boton { display: inline-block; background: #145976; color: white; borde
 header button { background: #2f5a70; }
 .errorlist { color: #9a2727; }
 li + li { margin-top: .5rem; }
+.menu-servicios { display: flex; flex-wrap: wrap; gap: .6rem 1.25rem; padding: .7rem 1.5rem; background: #e3eff6; }
+.menu-servicios a { color: #123d59; font-weight: 650; }

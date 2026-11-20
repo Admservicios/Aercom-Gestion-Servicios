@@ -3,7 +3,7 @@
 <h1>Mis tareas</h1>
 {% for accion in acciones %}
 <article>
-<p class="contexto">T-{{ accion.ticket_id }} · {{ accion.ticket.cliente }}{% if accion.ticket.equipo %} · {{ accion.ticket.equipo }}{% endif %}</p>
+<p class="contexto">T-{{ accion.ticket_id }} · {{ accion.ticket.cliente_nombre }}{% if accion.ticket.equipo_nombre %} · {{ accion.ticket.equipo_nombre }}{% endif %}</p>
 <h2>{{ accion.titulo }}</h2>
 {{ accion.detalle|linebreaks }}
 {% if accion.realizada_el %}
