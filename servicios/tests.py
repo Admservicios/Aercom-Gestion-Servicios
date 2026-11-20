@@ -1,3 +1,5 @@
+from datetime import date
+from decimal import Decimal
 from secrets import token_urlsafe
 
 from django.contrib.auth.models import Group, User
@@ -5,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Accion, AlertaCampo, Cliente, Equipo, Planta, Ticket
+from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Equipo, Planta, Ticket
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -360,3 +362,83 @@ class PermisosPorRolTest(TestCase):
         self.client.force_login(sin_rol)
         for vista in ("inicio", "abonados", "nueva_alerta"):
             self.assertEqual(self.client.get(reverse(vista)).status_code, 403)
+
+
+class ContratosAbonoTest(TestCase):
+    def setUp(self):
+        self.administracion = User.objects.create_user("administracion.abonos")
+        self.administracion.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.client.force_login(self.administracion)
+        self.abonado = Cliente.objects.create(codigo="AB-01", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.tercero = Cliente.objects.create(codigo="TE-01", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        self.planta = self.abonado.plantas.create(codigo="P1", nombre="Planta Norte")
+        self.equipo = self.abonado.equipos.create(planta=self.planta, codigo="GE", nombre="Generador")
+        self.alta = reverse("nuevo_contrato_abono", args=[self.abonado.pk])
+        self.datos = {
+            "referencia": "AB-100", "vigente_desde": "2020-01-01", "alcance": "Visita preventiva",
+            "frecuencia": "Mensual", "plantas": [self.planta.pk], "equipos": [self.equipo.pk],
+            "valor": "13500.50", "moneda": "ars", "requiere_oc": "on", "requiere_hes": "on",
+            "portal": "Portal ficticio", "requisitos_administrativos": "Adjuntar el informe de visita.",
+        }
+
+    def test_registra_cobertura_y_conserva_periodos_anteriores(self):
+        fin = "2020-12-31"
+        respuesta = self.client.post(self.alta, {**self.datos, "vigente_hasta": fin})
+        anterior = self.abonado.contratos_abono.get()
+        self.assertRedirects(respuesta, reverse("contrato_abono", args=[self.abonado.pk, anterior.pk]))
+        self.assertEqual(anterior.estado_vigencia, "Vencido")
+        respuesta = self.client.post(self.alta, {**self.datos, "vigente_desde": "2021-01-01"})
+        contrato = self.abonado.contratos_abono.first()
+        detalle = reverse("contrato_abono", args=[self.abonado.pk, contrato.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertEqual(contrato.estado_vigencia, "Vigente")
+        self.assertEqual(contrato.valor, Decimal("13500.50"))
+        self.assertEqual(contrato.moneda, "ARS")
+        self.assertTrue(contrato.requiere_hes and contrato.requiere_oc)
+        self.assertEqual(list(contrato.plantas.all()), [self.planta])
+        self.assertEqual(list(contrato.equipos.all()), [self.equipo])
+
+        ficha = self.client.get(reverse("cliente", args=[self.abonado.pk]))
+        self.assertContains(ficha, detalle)
+        self.assertContains(ficha, "Vigente")
+        self.assertContains(ficha, "Vencido")
+        self.assertContains(self.client.get(detalle), "Portal ficticio")
+        self.assertContains(self.client.get(detalle), reverse("equipo", args=[self.equipo.pk]))
+        self.assertContains(self.client.post(self.alta, self.datos), "Ya existe un contrato")
+        self.assertEqual(self.abonado.contratos_abono.count(), 2)
+
+    def test_rechaza_fechas_invalidas_y_cobertura_ajena(self):
+        planta_ajena = self.tercero.plantas.create(codigo="P1", nombre="Otra planta")
+        equipo_ajeno = self.tercero.equipos.create(codigo="E1", nombre="Otro equipo")
+        respuesta = self.client.post(self.alta, {
+            **self.datos, "plantas": [planta_ajena.pk], "equipos": [equipo_ajeno.pk], "vigente_hasta": "2019-12-31",
+        })
+        for campo in ("plantas", "equipos"):
+            self.assertTrue(respuesta.context["form"].has_error(campo, "invalid_choice"))
+        self.assertContains(respuesta, "La fecha de fin debe ser igual o posterior")
+        general = self.client.post(self.alta, {**self.datos, "cobertura_general": "on"})
+        self.assertContains(general, "Elegí cobertura general o seleccioná")
+        self.assertFalse(ContratoAbono.objects.exists())
+        alta_tercero = reverse("nuevo_contrato_abono", args=[self.tercero.pk])
+        self.assertEqual(self.client.post(alta_tercero, self.datos).status_code, 404)
+
+    def test_edicion_y_lectura_segun_rol(self):
+        self.client.post(self.alta, self.datos)
+        contrato = self.abonado.contratos_abono.get()
+        editar = reverse("editar_contrato_abono", args=[self.abonado.pk, contrato.pk])
+        detalle = reverse("contrato_abono", args=[self.abonado.pk, contrato.pk])
+        self.assertContains(self.client.get(editar), 'value="2020-01-01"')
+        self.assertRedirects(
+            self.client.post(editar, {**self.datos, "vigente_hasta": "2020-12-31"}), detalle,
+        )
+        contrato.refresh_from_db()
+        self.assertEqual(contrato.vigente_hasta, date(2020, 12, 31))
+        comercial = User.objects.create_user("comercial.abonos")
+        comercial.groups.add(Group.objects.create(name=Rol.COMERCIAL))
+        self.client.force_login(comercial)
+        self.assertContains(self.client.get(detalle), "Qué cubre el abono")
+        self.assertEqual(self.client.post(editar, self.datos).status_code, 403)
+        campo = User.objects.create_user("campo.abonos")
+        campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(campo)
+        self.assertEqual(self.client.get(detalle).status_code, 403)

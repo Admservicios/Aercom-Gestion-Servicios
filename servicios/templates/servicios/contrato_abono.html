@@ -1,0 +1,49 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<p><a href="{% url 'cliente' contrato.cliente_id %}#contratos">Volver a {{ contrato.cliente.nombre }}</a></p>
+<p class="contexto">Contrato de abono · {{ contrato.estado_vigencia }}</p>
+<h1>{{ contrato.referencia }}</h1>
+{% if puede_editar_catalogo %}
+<p><a class="boton" href="{% url 'editar_contrato_abono' contrato.cliente_id contrato.pk %}">Editar contrato</a></p>
+{% endif %}
+<article>
+  <h2>Vigencia y valor</h2>
+  <dl>
+    <dt>Desde</dt><dd>{{ contrato.vigente_desde|date:"d/m/Y" }}</dd>
+    <dt>Hasta</dt><dd>{% if contrato.vigente_hasta %}{{ contrato.vigente_hasta|date:"d/m/Y" }}{% else %}Sin fecha de fin{% endif %}</dd>
+    <dt>Frecuencia</dt><dd>{{ contrato.frecuencia }}</dd>
+    <dt>Valor contractual</dt><dd>{{ contrato.moneda }} {{ contrato.valor|floatformat:2 }}</dd>
+  </dl>
+</article>
+<article>
+  <h2>Qué cubre el abono</h2>
+  {{ contrato.alcance|linebreaks }}
+  {% if contrato.cobertura_general %}
+  <p>Todas las plantas y equipos del cliente.</p>
+  {% else %}
+  {% with plantas=contrato.plantas.all equipos=contrato.equipos.all %}
+    {% if plantas %}
+    <h3>Plantas indicadas en el contrato</h3>
+    <ul>
+      {% for planta in plantas %}<li><a href="{% url 'planta' planta.pk %}">{{ planta.nombre }}</a> · {{ planta.codigo }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if equipos %}
+    <h3>Equipos incluidos individualmente</h3>
+    <ul>
+      {% for equipo in equipos %}<li><a href="{% url 'equipo' equipo.pk %}">{{ equipo.nombre }}</a> · {{ equipo.codigo }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  {% endwith %}
+  {% endif %}
+</article>
+<article>
+  <h2>Requisitos administrativos</h2>
+  <dl>
+    <dt>Orden de compra (OC)</dt><dd>{{ contrato.requiere_oc|yesno:"Sí,No" }}</dd>
+    <dt>Hoja de entrada de servicios (HES)</dt><dd>{{ contrato.requiere_hes|yesno:"Sí,No" }}</dd>
+    {% if contrato.portal %}<dt>Portal</dt><dd>{{ contrato.portal }}</dd>{% endif %}
+  </dl>
+  {{ contrato.requisitos_administrativos|linebreaks }}
+</article>
+{% endblock %}

@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from pathlib import Path
 from secrets import token_urlsafe
 from tempfile import NamedTemporaryFile
@@ -8,7 +9,9 @@ from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from servicios.models import Accion, Cliente, ContactoCliente, DocumentoCliente, Equipo, Planta, Ticket
+from servicios.models import (
+    Accion, Cliente, ContactoCliente, ContratoAbono, DocumentoCliente, Equipo, Planta, Ticket,
+)
 from servicios.permisos import ROLES_SERVICIOS, Rol
 
 
@@ -92,6 +95,23 @@ class Command(BaseCommand):
             cliente=abonado, tipo="Llamada SAP", referencia="DEMO-NS-001",
             defaults={"descripcion": "Referencia ficticia de mantenimiento"},
         )
+        ContratoAbono.objects.get_or_create(
+            cliente=abonado, referencia="AB-DEMO-01", vigente_desde=date(2025, 1, 1),
+            defaults={
+                "vigente_hasta": date(2025, 12, 31), "alcance": "Visitas preventivas de ejemplo.",
+                "frecuencia": "Mensual", "cobertura_general": True, "valor": "100000.00", "moneda": "ARS",
+            },
+        )
+        contrato, nuevo_contrato = ContratoAbono.objects.get_or_create(
+            cliente=abonado, referencia="AB-DEMO-01", vigente_desde=date(2026, 1, 1),
+            defaults={
+                "alcance": "Mantenimiento preventivo y lavado del generador en Planta Norte.",
+                "frecuencia": "Mensual", "valor": "125000.00", "moneda": "ARS", "requiere_oc": True,
+            },
+        )
+        if nuevo_contrato:
+            contrato.plantas.add(planta)
+            contrato.equipos.add(equipo)
         if {"oficina.demo", "campo.demo"} <= nuevas:
             ticket = Ticket.objects.create(
                 asunto="Lavado y revisión de vibración", cliente_ficha=abonado,

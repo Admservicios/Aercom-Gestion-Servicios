@@ -1,7 +1,8 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import URLValidator
+from django.core.validators import MinValueValidator, RegexValidator, URLValidator
 from django.db import models
+from django.utils import timezone
 
 
 class Cliente(models.Model):
@@ -94,6 +95,57 @@ class Equipo(models.Model):
     def clean(self):
         if self.planta_id and self.planta.cliente_id != self.cliente_id:
             raise ValidationError({"planta": "La planta debe pertenecer al cliente seleccionado."})
+
+
+class ContratoAbono(models.Model):
+    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="contratos_abono")
+    referencia = models.CharField(max_length=80)
+    vigente_desde = models.DateField()
+    vigente_hasta = models.DateField(blank=True, null=True)
+    alcance = models.TextField()
+    frecuencia = models.CharField(max_length=120)
+    cobertura_general = models.BooleanField("Todas las plantas y equipos", default=False)
+    plantas = models.ManyToManyField(Planta, related_name="contratos_abono", blank=True)
+    equipos = models.ManyToManyField(Equipo, related_name="contratos_abono", blank=True)
+    valor = models.DecimalField(max_digits=14, decimal_places=2, validators=[MinValueValidator(0)])
+    moneda = models.CharField(
+        max_length=3, validators=[RegexValidator(r"^[A-Z]{3}\Z", "Ingresá un código como ARS o USD.")],
+    )
+    requiere_oc = models.BooleanField("Requiere orden de compra (OC)", default=False)
+    requiere_hes = models.BooleanField("Requiere hoja de entrada de servicios (HES)", default=False)
+    portal = models.CharField(max_length=200, blank=True)
+    requisitos_administrativos = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("-vigente_desde", "-pk")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("cliente", "referencia", "vigente_desde"), name="abono_referencia_inicio_por_cliente",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(vigente_hasta__isnull=True) | models.Q(vigente_hasta__gte=models.F("vigente_desde")),
+                name="abono_vigencia_ordenada",
+            ),
+            models.CheckConstraint(condition=models.Q(valor__gte=0), name="abono_valor_no_negativo"),
+        ]
+
+    @property
+    def estado_vigencia(self):
+        hoy = timezone.localdate()
+        if self.vigente_desde > hoy:
+            return "Futuro"
+        if self.vigente_hasta and self.vigente_hasta < hoy:
+            return "Vencido"
+        return "Vigente"
+
+    def clean(self):
+        errores = {}
+        if self.cliente_id and self.cliente.tipo != Cliente.Tipo.ABONADO:
+            errores["cliente"] = "Los contratos de abono corresponden a clientes abonados."
+        if self.vigente_desde and self.vigente_hasta and self.vigente_hasta < self.vigente_desde:
+            errores["vigente_hasta"] = "La fecha de fin debe ser igual o posterior a la de inicio."
+        if errores:
+            raise ValidationError(errores)
 
 
 class Ticket(models.Model):

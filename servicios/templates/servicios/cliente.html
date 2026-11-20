@@ -5,6 +5,21 @@
 <h1>{{ cliente.nombre }}</h1>
 <p><a class="boton" href="{% url 'nuevo' %}?cliente_ficha={{ cliente.pk }}">Nuevo ticket</a></p>
 {% if cliente.referencia_sap %}<p>Referencia SAP: {{ cliente.referencia_sap }}</p>{% endif %}
+{% if cliente.tipo == "abonado" %}
+<article id="contratos">
+  <h2>Contratos de abono</h2>
+  {% if puede_editar_catalogo %}<p><a href="{% url 'nuevo_contrato_abono' cliente.pk %}">Nuevo contrato de abono</a></p>{% endif %}
+  <ul>
+    {% for contrato in cliente.contratos_abono.all %}
+    <li>
+      <a href="{% url 'contrato_abono' cliente.pk contrato.pk %}">{{ contrato.referencia }}</a>
+      · {{ contrato.estado_vigencia }} · {{ contrato.vigente_desde|date:"d/m/Y" }}
+      {% if contrato.vigente_hasta %} al {{ contrato.vigente_hasta|date:"d/m/Y" }}{% endif %}
+    </li>
+    {% empty %}<li>Sin contratos de abono registrados.</li>{% endfor %}
+  </ul>
+</article>
+{% endif %}
 <article>
   <h2>Plantas</h2>
   {% if puede_editar_catalogo %}<p><a href="{% url 'nueva_planta' %}?cliente={{ cliente.pk }}">Nueva planta</a></p>{% endif %}
