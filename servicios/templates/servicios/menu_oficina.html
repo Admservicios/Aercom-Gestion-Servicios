@@ -6,6 +6,7 @@
   <a href="{% url 'tickets' %}">Tickets</a>
   <a href="{% url 'clientes' %}">Clientes</a>
   <a href="{% url 'equipos' %}">Equipos</a>
+  <a href="{% url 'pedidos_servicio' %}">Pedidos de servicio</a>
   <a href="{% url 'cotizaciones_terceros' %}">Cotizaciones de terceros</a>
   {% if puede_gestionar_cotizaciones %}<a href="{% url 'solicitudes_precio' %}">Solicitudes de precios</a>{% endif %}
   {% if puede_ver_solicitudes %}<a href="{% url 'solicitudes_cotizacion' %}">Solicitudes de cotización</a>{% endif %}

@@ -38,6 +38,13 @@
 {% endif %}
 {% include "servicios/cotizaciones_vinculadas.html" %}
 </article>
+<article>
+  <h2>Pedidos vinculados</h2>
+  {% if puede_gestionar_cotizaciones and ticket.cliente_ficha.tipo == "abonado" %}
+  <p><a href="{% url 'pedido_por_abono' ticket.pk %}">Crear pedido por abono</a></p>
+  {% endif %}
+  {% include "servicios/pedidos_vinculados.html" %}
+</article>
 <h2>Acciones</h2>
 {% for accion in acciones %}
 <article id="accion-{{ accion.pk }}">

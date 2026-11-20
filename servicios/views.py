@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .forms import TicketForm, VinculoTicketForm
-from .models import Accion, CambioAccion, Ticket
+from .models import Accion, CambioAccion, PedidoServicio, Ticket
 from .permisos import ROLES_SERVICIOS, es_oficina, oficina_requerida, servicios_requeridos
 from .solicitudes import solicitudes_visibles
 
@@ -115,9 +115,9 @@ def vincular_ticket(request, pk):
     form = VinculoTicketForm(request.POST if request.method == "POST" else None, instance=registro)
     if form.is_bound and form.is_valid():
         if registro.cliente_ficha_id != cliente_anterior and (
-            registro.solicitudes_cotizacion.exists() or registro.cotizaciones.exists()
+            registro.solicitudes_cotizacion.exists() or registro.cotizaciones.exists() or registro.pedidos_servicio.exists()
         ):
-            form.add_error("cliente_ficha", "El ticket tiene solicitudes o cotizaciones asociadas. Conservá su cliente.")
+            form.add_error("cliente_ficha", "El ticket tiene solicitudes, cotizaciones o pedidos asociados. Conservá su cliente.")
         else:
             form.instance.save(update_fields=VinculoTicketForm.Meta.fields)
             return redirect("ticket", pk=pk)
@@ -132,6 +132,7 @@ def ver_ticket(request, registro, form, estado_form=None, accion_id=None):
         "ticket": registro, "acciones": acciones, "form": form,
         "solicitudes_cotizacion": solicitudes_visibles(request.user).filter(ticket=registro),
         "cotizaciones": registro.cotizaciones.all(),
+        "pedidos": PedidoServicio.objects.filter(Q(ticket=registro) | Q(cotizaciones__ticket=registro)).distinct(),
         "estado_form": estado_form or EstadoForm(auto_id=False), "accion_id": accion_id,
     })
 

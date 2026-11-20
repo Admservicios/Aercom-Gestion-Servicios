@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from .models import Accion, AlertaCampo, Cliente, ContratoAbono, Cotizacion, Equipo, Planta, RegistroMantenimiento, Ticket
 from .models import RespuestaPrecio, SolicitudCotizacion, SolicitudPrecio
+from .models import PedidoServicio
 from .permisos import ROLES_OFICINA, Rol
 
 
@@ -739,3 +740,91 @@ class SolicitudPrecioTest(TestCase):
         solicitud.refresh_from_db()
         self.assertIsNone(solicitud.repuesto_id)
         self.assertEqual(solicitud.codigo, "COR-91")
+
+
+class PedidoServicioTest(TestCase):
+    def setUp(self):
+        self.administracion = User.objects.create_user("administracion.pedidos")
+        self.administracion.groups.add(Group.objects.create(name=Rol.ADMINISTRACION))
+        self.coordinacion = User.objects.create_user("coordinacion.pedidos")
+        self.coordinacion.groups.add(Group.objects.create(name=Rol.COORDINACION))
+        self.client.force_login(self.administracion)
+        self.cliente = Cliente.objects.create(codigo="AB-51", nombre="Abonado ficticio", tipo=Cliente.Tipo.ABONADO)
+        self.tercero = Cliente.objects.create(codigo="TE-51", nombre="Tercero ficticio", tipo=Cliente.Tipo.TERCERO)
+        self.ticket = Ticket.objects.create(asunto="Servicio ficticio", cliente_ficha=self.cliente, creado_por=self.administracion)
+        self.otro_ticket = Ticket.objects.create(asunto="Segundo trabajo", cliente_ficha=self.cliente, creado_por=self.administracion)
+        self.cotizacion = self.ticket.cotizaciones.create(alcance="Revisar generador", estado=Cotizacion.Estado.APROBADA)
+        self.otro_presupuesto = self.otro_ticket.cotizaciones.create(
+            alcance="Cambio de correas", estado=Cotizacion.Estado.APROBADA,
+        )
+        self.equipo = self.cliente.equipos.create(codigo="EQ-51", nombre="Generador ficticio")
+        self.alta = reverse("pedido_desde_cotizacion", args=[self.cotizacion.pk])
+        self.datos = {
+            "alcance": "Revisión y cambio de correas", "tipo": "servicio",
+            "cotizaciones": [self.cotizacion.pk, self.otro_presupuesto.pk], "equipos": [self.equipo.pk],
+        }
+
+    def test_pedido_de_varias_cotizaciones_y_seguimiento_en_excel(self):
+        respuesta = self.client.post(self.alta, self.datos)
+        pedido = self.ticket.pedidos_servicio.get()
+        detalle = reverse("pedido_servicio", args=[pedido.pk])
+        seguir = reverse("seguimiento_pedido", args=[pedido.pk])
+        self.assertRedirects(respuesta, detalle)
+        self.assertEqual(set(pedido.cotizaciones.all()), {self.cotizacion, self.otro_presupuesto})
+        self.assertContains(self.client.get(reverse("ticket", args=[self.otro_ticket.pk])), detalle)
+        self.assertRedirects(self.client.post(seguir, {"estado": "enviado", "referencia": "Correo ficticio"}), detalle)
+        self.client.force_login(self.coordinacion)
+        self.assertRedirects(self.client.post(seguir, {"estado": "pendiente_agendar"}), detalle)
+        self.assertContains(self.client.post(seguir, {"estado": "agendado"}), "Indicá la fecha registrada")
+        self.assertRedirects(self.client.post(seguir, {
+            "estado": "agendado", "fecha_agendada": "2026-12-15", "referencia": "Agenda General",
+        }), detalle)
+        pedido.refresh_from_db()
+        self.assertEqual(pedido.fecha_agendada, date(2026, 12, 15))
+        self.assertEqual(list(pedido.cambios.order_by("pk").values_list("estado", flat=True)), [
+            "preparacion", "enviado", "pendiente_agendar", "agendado",
+        ])
+        self.assertContains(self.client.get(reverse("pedidos_servicio"), {"estado": "agendado"}), detalle)
+
+    def test_cobertura_confirmada_y_rechazo_de_fuentes_ajenas(self):
+        contrato = self.cliente.contratos_abono.create(
+            referencia="AB-51", vigente_desde=date(2020, 1, 1), alcance="Servicio preventivo",
+            frecuencia="Mensual", valor=100, moneda="ARS", cobertura_general=True,
+        )
+        alta = reverse("pedido_por_abono", args=[self.ticket.pk])
+        formulario = {"contrato": contrato.pk, "alcance": "Visita de abono", "equipos": [self.equipo.pk]}
+        self.assertTrue(self.client.post(alta, formulario).context["form"].has_error("cobertura_confirmada", "required"))
+        self.client.post(alta, {**formulario, "cobertura_confirmada": "on", "tipo": "repuestos"})
+        self.assertEqual(contrato.pedidos_servicio.get().tipo, PedidoServicio.Tipo.SERVICIO)
+        ajeno = Ticket.objects.create(asunto="Servicio ajeno", cliente_ficha=self.tercero, creado_por=self.administracion)
+        cotizacion_ajena = ajeno.cotizaciones.create(alcance="Otra oferta", estado=Cotizacion.Estado.APROBADA)
+        equipo_ajeno = self.tercero.equipos.create(codigo="OTRO", nombre="Otro generador")
+        respuesta = self.client.post(self.alta, {
+            **self.datos, "cotizaciones": [cotizacion_ajena.pk], "equipos": [equipo_ajeno.pk],
+        })
+        self.assertTrue(respuesta.context["form"].has_error("cotizaciones", "invalid_choice"))
+        self.assertTrue(respuesta.context["form"].has_error("equipos", "invalid_choice"))
+        self.assertEqual(self.client.get(reverse("pedido_por_abono", args=[ajeno.pk])).status_code, 404)
+        self.cotizacion.estado = Cotizacion.Estado.PREPARACION
+        self.cotizacion.save(update_fields=["estado"])
+        self.assertEqual(self.client.get(self.alta).status_code, 404)
+
+    def test_venta_de_repuestos_registra_confirmacion_de_logistica(self):
+        datos = {**self.datos, "tipo": "repuestos"}
+        self.assertContains(self.client.post(self.alta, datos), "Indicá retiro en depósito o envío.")
+        self.client.post(self.alta, {**datos, "modalidad_entrega": "retiro"})
+        pedido = self.ticket.pedidos_servicio.get()
+        detalle = reverse("pedido_servicio", args=[pedido.pk])
+        seguir = reverse("seguimiento_pedido", args=[pedido.pk])
+        self.assertContains(self.client.get(detalle), "Retiro en depósito")
+        self.assertRedirects(self.client.post(seguir, {"estado": "enviado"}), detalle)
+        self.assertContains(self.client.post(seguir, {"estado": "entregado"}), "confirmación o referencia informada")
+        self.assertRedirects(self.client.post(seguir, {"estado": "entregado", "referencia": "Remito ficticio"}), detalle)
+        self.assertContains(self.client.get(detalle), "Remito ficticio")
+        pedido.refresh_from_db()
+        self.assertIsNone(pedido.fecha_agendada)
+        self.assertEqual(pedido.estado, PedidoServicio.Estado.ENTREGADO)
+        campo = User.objects.create_user("campo.pedidos")
+        campo.groups.add(Group.objects.get(name=Rol.CAMPO))
+        self.client.force_login(campo)
+        self.assertEqual(self.client.get(detalle).status_code, 403)

@@ -1,0 +1,26 @@
+{% extends "servicios/base.html" %}
+{% block contenido %}
+<h1>Pedidos de servicio</h1>
+<article>
+  <form method="get">
+    <label for="q">Buscar por número, referencia, cliente o asunto del ticket</label>
+    <input id="q" name="q" value="{{ consulta }}">
+    <label for="estado">Estado</label>
+    <select id="estado" name="estado">
+      <option value="">Todos</option>
+      {% for valor, etiqueta in estados %}
+      <option value="{{ valor }}"{% if valor == estado %} selected{% endif %}>{{ etiqueta }}</option>
+      {% endfor %}
+    </select>
+    <button>Buscar</button>
+  </form>
+  <ul>
+    {% for pedido in pagina %}
+    <li><a href="{% url 'pedido_servicio' pedido.pk %}">PS-{{ pedido.pk }}{% if pedido.referencia %} · {{ pedido.referencia }}{% endif %}</a>
+      · {{ pedido.ticket.cliente_nombre }} · {{ pedido.get_tipo_display }} · {{ pedido.get_estado_display }}
+      <br>Próxima acción: {{ pedido.siguiente_paso }}</li>
+    {% empty %}<li>Sin pedidos para mostrar.</li>{% endfor %}
+  </ul>
+  {% include "servicios/paginacion.html" %}
+</article>
+{% endblock %}

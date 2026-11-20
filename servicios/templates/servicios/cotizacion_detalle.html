@@ -51,6 +51,13 @@
 </article>
 {% endif %}
 <article>
+  <h2>Pedidos vinculados</h2>
+  {% if puede_gestionar_cotizaciones and cotizacion.estado == "aprobada" %}
+  <p><a href="{% url 'pedido_desde_cotizacion' cotizacion.pk %}">Crear pedido desde esta cotización</a></p>
+  {% endif %}
+  {% include "servicios/pedidos_vinculados.html" with pedidos=cotizacion.pedidos_servicio.all %}
+</article>
+<article>
   <h2>Historial</h2>
   <ul>
     {% for cambio in cotizacion.cambios.all %}

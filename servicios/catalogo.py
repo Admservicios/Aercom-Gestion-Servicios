@@ -4,7 +4,7 @@ from django.db.models import F, Q
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import ClienteForm, ContactoClienteForm, DocumentoClienteForm, EquipoForm, PlantaForm
-from .models import Accion, Cliente, ContactoCliente, Cotizacion, DocumentoCliente, Equipo, Planta
+from .models import Accion, Cliente, ContactoCliente, Cotizacion, DocumentoCliente, Equipo, PedidoServicio, Planta
 from .permisos import edicion_catalogo_requerida, oficina_requerida
 
 
@@ -34,6 +34,7 @@ def cliente(request, pk):
         "cliente": registro, "equipos": registro.equipos.select_related("planta"),
         "tickets": registro.tickets.order_by("-pk"),
         "cotizaciones": Cotizacion.objects.filter(ticket__cliente_ficha=registro),
+        "pedidos": PedidoServicio.objects.filter(ticket__cliente_ficha=registro),
         "contactos": registro.contactos.select_related("planta"),
         "documentos": registro.documentos.all(),
         "pagina": Paginator(acciones, 30).get_page(request.GET.get("page")),

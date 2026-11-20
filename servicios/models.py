@@ -466,3 +466,63 @@ class RespuestaPrecio(models.Model):
                 errores["vigente_hasta"] = "La vigencia no puede terminar antes de la respuesta."
         if errores:
             raise ValidationError(errores)
+
+
+class PedidoServicio(models.Model):
+    class Tipo(models.TextChoices):
+        SERVICIO = "servicio", "Servicio"
+        REPUESTOS = "repuestos", "Venta de repuestos"
+
+    class Estado(models.TextChoices):
+        PREPARACION = "preparacion", "En preparación"
+        ENVIADO = "enviado", "Enviado"
+        PENDIENTE_AGENDAR = "pendiente_agendar", "Pendiente de agendar"
+        AGENDADO = "agendado", "Agendado"
+        ENTREGADO = "entregado", "Entregado"
+
+    class ModalidadEntrega(models.TextChoices):
+        RETIRO = "retiro", "Retiro en depósito"
+        ENVIO = "envio", "Envío"
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="pedidos_servicio")
+    cotizaciones = models.ManyToManyField(Cotizacion, related_name="pedidos_servicio", blank=True)
+    contrato = models.ForeignKey(
+        ContratoAbono, on_delete=models.PROTECT, related_name="pedidos_servicio", blank=True, null=True,
+    )
+    equipos = models.ManyToManyField(Equipo, related_name="pedidos_servicio", blank=True)
+    referencia = models.CharField("Referencia del pedido", max_length=100, blank=True)
+    tipo = models.CharField(max_length=10, choices=Tipo, default=Tipo.SERVICIO)
+    alcance = models.TextField()
+    indicaciones = models.TextField("Indicaciones y próxima acción", blank=True)
+    modalidad_entrega = models.CharField(max_length=8, choices=ModalidadEntrega, blank=True)
+    estado = models.CharField(max_length=18, choices=Estado, default=Estado.PREPARACION)
+    fecha_agendada = models.DateField(blank=True, null=True)
+
+    class Meta:
+        ordering = ("-pk",)
+
+    @property
+    def destino(self):
+        return "Logística" if self.tipo == self.Tipo.REPUESTOS else "Coordinación"
+
+    @property
+    def siguiente_paso(self):
+        if self.estado == self.Estado.PREPARACION:
+            return f"Enviar a {self.destino}"
+        if self.tipo == self.Tipo.REPUESTOS:
+            return "Entrega registrada" if self.estado == self.Estado.ENTREGADO else "Esperar confirmación de Logística"
+        if self.estado == self.Estado.AGENDADO:
+            return "Realizar el servicio según la Agenda General"
+        return "Confirmar la programación en la Agenda General"
+
+
+class CambioPedidoServicio(models.Model):
+    pedido = models.ForeignKey(PedidoServicio, on_delete=models.CASCADE, related_name="cambios")
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    estado = models.CharField(max_length=18, choices=PedidoServicio.Estado)
+    nota = models.TextField(blank=True)
+    referencia = models.CharField(max_length=180, blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-pk",)

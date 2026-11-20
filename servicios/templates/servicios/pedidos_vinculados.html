@@ -1,0 +1,5 @@
+<ul>
+  {% for pedido in pedidos %}
+  <li><a href="{% url 'pedido_servicio' pedido.pk %}">PS-{{ pedido.pk }}{% if pedido.referencia %} · {{ pedido.referencia }}{% endif %}</a> · {{ pedido.get_estado_display }}</li>
+  {% empty %}<li>Sin pedidos registrados.</li>{% endfor %}
+</ul>
